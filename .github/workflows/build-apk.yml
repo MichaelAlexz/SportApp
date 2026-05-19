@@ -1,0 +1,64 @@
+# ===========================================
+# 云端编译 APK - GitHub Actions
+# ===========================================
+# 使用方法：
+# 1. 将本项目推送到 GitHub 仓库
+# 2. 进入 Actions 页面，手动触发 "Build APK"
+# 3. 构建完成后在 Actions 输出中下载 APK
+# ===========================================
+# 如果不想用 GitHub，也可以用替代方案：
+# - 腾讯云 DevOps（coding.net）
+# - 阿里云云效（devops.aliyun.com）
+# - GitLab CI（gitlab.com）
+# ===========================================
+
+name: Build APK
+
+on:
+  # 手动触发
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: '构建类型'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+
+  # 或者推送代码自动触发（取消下面注释）
+  # push:
+  #   branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v4
+
+      - name: ☕ 设置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: 🔧 设置 Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: 🏗️ 编译 APK (${{ github.event.inputs.build_type || 'debug' }})
+        run: |
+          chmod +x gradlew
+          ./gradlew assemble${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}
+
+      - name: 📦 上传 APK 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: SportApp-${{ github.event.inputs.build_type || 'debug' }}-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/*/*.apk
+            app/build/outputs/apk/*/*.aab
+          if-no-files-found: error
+          retention-days: 30
