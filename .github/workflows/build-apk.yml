@@ -2,20 +2,14 @@
 # 云端编译 APK - GitHub Actions
 # ===========================================
 # 使用方法：
-# 1. 将本项目推送到 GitHub 仓库
-# 2. 进入 Actions 页面，手动触发 "Build APK"
-# 3. 构建完成后在 Actions 输出中下载 APK
-# ===========================================
-# 如果不想用 GitHub，也可以用替代方案：
-# - 腾讯云 DevOps（coding.net）
-# - 阿里云云效（devops.aliyun.com）
-# - GitLab CI（gitlab.com）
+# 1. 推送到 GitHub 仓库
+# 2. Actions 页面手动触发 "Build APK"
+# 3. 自动下载 Gradle → 生成 wrapper → 编译 → 下载 APK
 # ===========================================
 
 name: Build APK
 
 on:
-  # 手动触发
   workflow_dispatch:
     inputs:
       build_type:
@@ -27,9 +21,9 @@ on:
           - debug
           - release
 
-  # 或者推送代码自动触发（取消下面注释）
-  # push:
-  #   branches: [ "main" ]
+  # 推送代码自动触发
+  push:
+    branches: [ "main" ]
 
 jobs:
   build:
@@ -45,20 +39,32 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: 🔧 设置 Gradle
-        uses: gradle/actions/setup-gradle@v3
+      - name: 📦 下载 Gradle 并生成 wrapper
+        run: |
+          # 下载 Gradle 8.5
+          curl -sL https://mirrors.cloud.tencent.com/gradle/gradle-8.5-bin.zip -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp/
+          /tmp/gradle-8.5/bin/gradle wrapper --gradle-version 8.5
+          chmod +x gradlew
+
+      - name: 🔧 缓存 Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
       - name: 🏗️ 编译 APK (${{ github.event.inputs.build_type || 'debug' }})
         run: |
-          chmod +x gradlew
-          ./gradlew assemble${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}
+          ./gradlew assemble${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }} --no-daemon
 
-      - name: 📦 上传 APK 产物
+      - name: 📦 上传 APK
         uses: actions/upload-artifact@v4
         with:
-          name: SportApp-${{ github.event.inputs.build_type || 'debug' }}-${{ github.sha }}
-          path: |
-            app/build/outputs/apk/*/*.apk
-            app/build/outputs/apk/*/*.aab
-          if-no-files-found: error
+          name: SportApp-${{ github.event.inputs.build_type || 'debug' }}
+          path: app/build/outputs/apk/*/*.apk
+          if-no-files-found: warn
           retention-days: 30
