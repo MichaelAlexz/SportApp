@@ -15,7 +15,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.sportapp.service.ReminderManager
 import com.sportapp.service.TrackingService
 import com.sportapp.ui.screens.HomeScreen
@@ -69,17 +68,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // 注册 GPS 追踪广播接收
+        // 注册 GPS 追踪广播（全局广播）
         val filter = IntentFilter(TrackingService.BROADCAST_LOCATION)
-        LocalBroadcastManager.getInstance(this)
-            .registerReceiver(trackingReceiver, filter)
+        registerReceiver(trackingReceiver, filter, Context.RECEIVER_EXPORTED)
     }
 
     override fun onPause() {
         super.onPause()
         try {
-            LocalBroadcastManager.getInstance(this)
-                .unregisterReceiver(trackingReceiver)
+            unregisterReceiver(trackingReceiver)
         } catch (_: Exception) {}
     }
 

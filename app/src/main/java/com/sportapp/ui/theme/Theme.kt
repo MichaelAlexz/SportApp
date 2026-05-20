@@ -15,7 +15,6 @@ private val LightColorScheme = lightColorScheme(
     onBackground = OnBackground,
     surface = Surface,
     onSurface = OnBackground,
-    surfaceVariant = FeedBg,
     onSurfaceVariant = TextSecondary,
     outline = Divider,
     error = ErrorRed,

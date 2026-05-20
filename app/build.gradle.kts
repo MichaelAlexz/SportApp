@@ -72,8 +72,8 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
 
-    // Google Play Services - Location
-    implementation("com.google.android.gms:play-services-location:21.0.1")
+    // 本地定位（替代 Google Play Services）
+    implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
 
     // WorkManager (for reminders)
     implementation("androidx.work:work-runtime-ktx:2.9.0")

@@ -152,24 +152,4 @@ class SportRepository(private val db: AppDatabase) {
     suspend fun updateMonthlyGoal(distanceMeters: Float) {
         goalDao.addProgress("monthly_run", distanceMeters / 1000f)
     }
-
-    // ───── 排行榜数据 ─────
-    data class WeeklyRanking(
-        val name: String,
-        val distanceKm: Float,
-        val streakDays: Int,
-        val avatarColor: Long,
-        val isMe: Boolean = false
-    )
-
-    /** 获取周排行数据（当前用户 + 模拟好友） */
-    fun getWeeklyRankings(currentUserDistance: Float): List<WeeklyRanking> {
-        return listOf(
-            WeeklyRanking("张小雅", 58.2f, 12, 0xFFFFD54F),
-            WeeklyRanking("王大勇", 42.6f, 8, 0xFFC0C0C5),
-            WeeklyRanking("李明轩", 36.8f, 5, 0xFFCD7F32),
-            WeeklyRanking("陈雨桐", currentUserDistance, 7, 0xFF5BC0B8, isMe = true),
-            WeeklyRanking("赵小萌", 21.0f, 3, 0xFFFF6B6B)
-        )
-    }
 }

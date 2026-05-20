@@ -40,5 +40,3 @@ val BadgeBgEarned = Color(0xFFFFF8E1)
 val BadgeBgLocked = Color(0xFFF5F5F8)
 val BadgeBorderLocked = Color(0xFFE0E0E5)
 
-// Feed
-val FeedBg = Color(0xFFF8F9FB)

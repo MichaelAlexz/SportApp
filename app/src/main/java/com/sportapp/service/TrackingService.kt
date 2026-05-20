@@ -1,45 +1,36 @@
 package com.sportapp.service
 
-import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.Build
+import android.os.Bundle
 import android.os.IBinder
-import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import androidx.core.content.ContextCompat
-import com.google.android.gms.location.*
 import com.sportapp.util.CalorieCalculator
 import kotlinx.coroutines.*
-import org.json.JSONArray
-import java.text.SimpleDateFormat
-import java.util.*
 import kotlin.math.roundToInt
 
 /**
- * GPS 运动追踪服务
- * 跑步/骑行时追踪实时位置、计算距离和配速
+ * GPS 运动追踪服务（使用 Android 原生 LocationManager，不依赖 Google Play Services）
  */
-class TrackingService : Service() {
+class TrackingService : Service(), LocationListener {
 
-    private lateinit var fusedLocationClient: FusedLocationProviderClient
-    private lateinit var locationRequest: LocationRequest
-    private lateinit var locationCallback: LocationCallback
-
+    private lateinit var locationManager: LocationManager
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val locations = mutableListOf<Location>()
     private var totalDistanceMeters = 0f
     private var startTimeMs = 0L
     private var workoutType = "running"
     private var isPaused = false
-    private var pausedDistance = 0f
     private var lastLocation: Location? = null
+    private var timerJob: Job? = null
+    private var elapsedSeconds = 0L
 
     companion object {
         const val TAG = "TrackingService"
@@ -57,29 +48,12 @@ class TrackingService : Service() {
         const val EXTRA_DURATION = "extra_duration"
         const val EXTRA_CALORIES = "extra_calories"
         const val EXTRA_PACE = "extra_pace"
-        const val EXTRA_LOCATIONS_JSON = "extra_locations"
     }
 
     override fun onCreate() {
         super.onCreate()
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
         createNotificationChannel()
-
-        locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_HIGH_ACCURACY, 2000L  // 2秒间隔
-        ).apply {
-            setMinUpdateIntervalMillis(1000L)
-            setMaxUpdateDelayMillis(5000L)
-        }.build()
-
-        locationCallback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                if (isPaused) return
-                for (location in result.locations) {
-                    processLocation(location)
-                }
-            }
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -88,24 +62,28 @@ class TrackingService : Service() {
                 workoutType = intent.getStringExtra(EXTRA_WORKOUT_TYPE) ?: "running"
                 startTimeMs = System.currentTimeMillis()
                 totalDistanceMeters = 0f
-                locations.clear()
+                elapsedSeconds = 0L
                 lastLocation = null
                 isPaused = false
-                startForeground(NOTIFICATION_ID, createNotification("运动追踪中..."))
+                startForeground(NOTIFICATION_ID, createNotification("运动中..."))
                 startLocationUpdates()
+                startTimer()
             }
             ACTION_PAUSE -> {
                 isPaused = true
                 stopLocationUpdates()
-                updateNotification("运动已暂停")
+                timerJob?.cancel()
+                updateNotification("已暂停")
             }
             ACTION_RESUME -> {
                 isPaused = false
                 startLocationUpdates()
-                updateNotification("运动追踪中...")
+                startTimer()
+                updateNotification("运动中...")
             }
             ACTION_STOP -> {
                 stopLocationUpdates()
+                timerJob?.cancel()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -114,86 +92,98 @@ class TrackingService : Service() {
     }
 
     private fun startLocationUpdates() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-            != PackageManager.PERMISSION_GRANTED
-        ) return
+        try {
+            // 优先使用 GPS，其次网络定位
+            val providers = listOf(
+                LocationManager.GPS_PROVIDER,
+                LocationManager.NETWORK_PROVIDER
+            )
 
-        fusedLocationClient.requestLocationUpdates(
-            locationRequest,
-            locationCallback,
-            Looper.getMainLooper()
-        )
-        Log.d(TAG, "Location updates started")
+            for (provider in providers) {
+                try {
+                    locationManager.requestLocationUpdates(
+                        provider,
+                        2000L,  // 2秒更新一次
+                        1f,     // 最小距离变化1米
+                        this
+                    )
+                    Log.d(TAG, "已注册定位: $provider")
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "无定位权限: $provider")
+                } catch (e: Exception) {
+                    Log.w(TAG, "定位不可用: $provider - ${e.message}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "启动定位失败", e)
+        }
     }
 
     private fun stopLocationUpdates() {
-        fusedLocationClient.removeLocationUpdates(locationCallback)
-        Log.d(TAG, "Location updates stopped")
+        try {
+            locationManager.removeUpdates(this)
+        } catch (_: Exception) {}
     }
 
-    private fun processLocation(location: Location) {
-        locations.add(location)
+    private fun startTimer() {
+        timerJob?.cancel()
+        timerJob = scope.launch {
+            while (isActive) {
+                delay(1000L)
+                if (!isPaused) {
+                    elapsedSeconds++
+                    broadcastUpdate()
+                }
+            }
+        }
+    }
 
-        val prevLoc = lastLocation
-        if (prevLoc != null && location.accuracy < 50f) {  // 过滤低精度点
-            val delta = location.distanceTo(prevLoc)
-            if (delta > 0 && delta < 200f) {  // 过滤异常跳点
+    // ─── LocationListener 回调 ───
+
+    override fun onLocationChanged(location: Location) {
+        if (isPaused) return
+
+        // 过滤低精度定位
+        if (location.accuracy > 100f) return
+
+        val prev = lastLocation
+        if (prev != null) {
+            val delta = location.distanceTo(prev)
+            if (delta > 0 && delta < 300f) {  // 过滤异常跳点
                 totalDistanceMeters += delta
             }
         }
-        if (location.accuracy < 50f) {
-            lastLocation = location
-        }
+        lastLocation = location
+    }
 
-        // 计算实时数据
-        val durationSeconds = (System.currentTimeMillis() - startTimeMs) / 1000
+    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+    override fun onProviderEnabled(provider: String) {}
+    override fun onProviderDisabled(provider: String) {}
+
+    private fun broadcastUpdate() {
         val avgPace = if (totalDistanceMeters > 0) {
-            (durationSeconds / (totalDistanceMeters / 1000f)).roundToInt()
+            (elapsedSeconds / (totalDistanceMeters / 1000f)).roundToInt()
         } else 0
-        val calories = CalorieCalculator.calculate(workoutType, durationSeconds)
+        val calories = CalorieCalculator.calculate(workoutType, elapsedSeconds)
 
-        // 广播更新
-        val jsonArray = JSONArray()
-        locations.takeLast(50).forEach { loc ->
-            val point = org.json.JSONObject().apply {
-                put("lat", loc.latitude)
-                put("lng", loc.longitude)
-            }
-            jsonArray.put(point)
-        }
-
-        val broadcastIntent = Intent(BROADCAST_LOCATION).apply {
+        val intent = Intent(BROADCAST_LOCATION).apply {
             putExtra(EXTRA_DISTANCE, totalDistanceMeters)
-            putExtra(EXTRA_DURATION, durationSeconds)
+            putExtra(EXTRA_DURATION, elapsedSeconds)
             putExtra(EXTRA_CALORIES, calories)
             putExtra(EXTRA_PACE, avgPace)
-            putExtra(EXTRA_LOCATIONS_JSON, jsonArray.toString())
         }
-        sendBroadcast(broadcastIntent)
-
-        // 更新通知
-        val distKm = totalDistanceMeters / 1000f
-        updateNotification(String.format("%.2f km | %s", distKm, formatDuration(durationSeconds)))
+        // 使用全局广播（LocalBroadcastManager 已弃用）
+        sendBroadcast(intent)
     }
 
-    private fun formatDuration(seconds: Long): String {
-        val h = seconds / 3600
-        val m = (seconds % 3600) / 60
-        val s = seconds % 60
-        return if (h > 0) String.format("%d:%02d:%02d", h, m, s)
-        else String.format("%02d:%02d", m, s)
-    }
+    // ─── 通知 ───
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID,
-                "运动追踪",
+                CHANNEL_ID, "运动追踪",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "显示运动追踪状态"
-                setShowBadge(false)
-            }
+            ).apply { setShowBadge(false) }
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
         }
@@ -210,15 +200,15 @@ class TrackingService : Service() {
     }
 
     private fun updateNotification(content: String) {
-        val notification = createNotification(content)
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(NOTIFICATION_ID, notification)
+        manager.notify(NOTIFICATION_ID, createNotification(content))
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
         stopLocationUpdates()
+        timerJob?.cancel()
         scope.cancel()
         super.onDestroy()
     }

@@ -11,7 +11,6 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sportapp.data.*
-import com.sportapp.data.SportRepository.WeeklyRanking
 import com.sportapp.service.TrackingService
 import com.sportapp.util.CalorieCalculator
 import kotlinx.coroutines.*
@@ -82,9 +81,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     private val _trackingPace = MutableStateFlow(0)
     val trackingPace: StateFlow<Int> = _trackingPace.asStateFlow()
 
-    // ─── 排行 & 目标 ───
-    private val _weeklyRankings = MutableStateFlow<List<WeeklyRanking>>(emptyList())
-    val weeklyRankings: StateFlow<List<WeeklyRanking>> = _weeklyRankings.asStateFlow()
+    // ─── 目标 ───
 
     private val _monthlyGoalProgress = MutableStateFlow(0f)
     val monthlyGoalProgress: StateFlow<Float> = _monthlyGoalProgress.asStateFlow()
@@ -214,13 +211,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
                     _monthlyGoalValue.value = goal.currentValue
                     _monthlyGoalProgress.value = (goal.currentValue / goal.targetValue).coerceAtMost(1f)
                 }
-            }
-        }
-        viewModelScope.launch {
-            repository.observeWeekDistance().collect { distance ->
-                _weeklyRankings.value = repository.getWeeklyRankings(
-                    currentUserDistance = (distance ?: 0f) / 1000f
-                )
             }
         }
     }

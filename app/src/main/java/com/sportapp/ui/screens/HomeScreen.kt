@@ -1,7 +1,6 @@
 package com.sportapp.ui.screens
 
 import android.content.Context
-import android.content.Intent
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -19,12 +18,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sportapp.*
-import com.sportapp.data.WorkoutRecord
-import com.sportapp.data.SportRepository.WeeklyRanking
 import com.sportapp.ui.components.*
 import com.sportapp.ui.theme.*
 import com.sportapp.viewmodel.HomeViewModel
@@ -51,8 +47,7 @@ fun HomeScreen(viewModel: HomeViewModel) {
     val trackingCalories by viewModel.trackingCalories.collectAsState()
     val trackingPace by viewModel.trackingPace.collectAsState()
 
-    // 排行 & 目标
-    val rankings by viewModel.weeklyRankings.collectAsState()
+    // 目标
     val monthlyProgress by viewModel.monthlyGoalProgress.collectAsState()
     val monthlyTarget by viewModel.monthlyGoalTarget.collectAsState()
     val monthlyValue by viewModel.monthlyGoalValue.collectAsState()
@@ -60,8 +55,6 @@ fun HomeScreen(viewModel: HomeViewModel) {
     // UI 状态
     var showReminder by remember { mutableStateOf(true) }
     var showWorkoutComplete by remember { mutableStateOf(false) }
-    var selectedTab by remember { mutableStateOf(0) }
-    var showShareToast by remember { mutableStateOf(false) }
 
     // 动态仪表盘数据
     val dashboardItems = remember(todaySteps, todayWorkoutDuration, todayCalories) {
@@ -93,19 +86,6 @@ fun HomeScreen(viewModel: HomeViewModel) {
         AchievementBadge("全力以赴", "单次10km", "💯", false)
     )
 
-    val feeds = listOf(
-        FriendFeed(
-            "张小雅", "12 分钟前", "晨跑打卡！滨江公园的日出太美了 🌅",
-            listOf("8.6" to "公里", "48" to "分钟", "386" to "千卡", "7'12\"" to "配速"),
-            28, 6, 0xFFFF9A9E, true
-        ),
-        FriendFeed(
-            "王大勇", "45 分钟前", "今天解锁了新路线！山地骑行真的太爽了 🚴‍♂️",
-            listOf("15.2" to "公里", "52" to "分钟", "426" to "千卡", "120" to "心率"),
-            15, 3, 0xFFA8EDEA, true
-        )
-    )
-
     // Dialog: 提醒
     if (showReminder) {
         ReminderDialog(
@@ -123,32 +103,13 @@ fun HomeScreen(viewModel: HomeViewModel) {
             distanceKm = trackingDistance / 1000f,
             durationMin = (trackingDuration / 60).toInt(),
             calories = trackingCalories,
-            onDismiss = { showWorkoutComplete = false },
-            onShare = {
-                showWorkoutComplete = false
-                // 分享打卡到其他APP
-                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(android.content.Intent.EXTRA_TEXT,
-                        "🏃 我在轻动完成了运动！\n" +
-                        "距离: ${String.format("%.1f", trackingDistance / 1000f)}km\n" +
-                        "时长: ${trackingDuration / 60}分钟\n" +
-                        "消耗: ${trackingCalories.toInt()}千卡\n" +
-                        "一起来运动吧！💪")
-                }
-                context.startActivity(android.content.Intent.createChooser(shareIntent, "分享打卡"))
-            }
+            onDismiss = { showWorkoutComplete = false }
         )
     }
 
     Scaffold(
         containerColor = Background,
-        bottomBar = {
-            BottomNavBar(
-                selectedTab = selectedTab,
-                onTabSelected = { selectedTab = it }
-            )
-        }
+        bottomBar = { SimpleBottomBar() }
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -162,7 +123,7 @@ fun HomeScreen(viewModel: HomeViewModel) {
             HeaderSection()
 
             // ─── DASHBOARD ───
-            SectionTitle("今日概况", "查看详情 ›")
+            SectionTitle("今日概况")
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 20.dp),
@@ -174,7 +135,7 @@ fun HomeScreen(viewModel: HomeViewModel) {
             }
 
             // ─── CHECK-IN ───
-            SectionTitle("今日打卡", "连续打卡 $streakDays 天 ›")
+            SectionTitle("今日打卡", "连续打卡 $streakDays 天")
             CheckInCardRealTime(
                 steps = todaySteps,
                 distance = stepDistance,
@@ -184,7 +145,6 @@ fun HomeScreen(viewModel: HomeViewModel) {
 
             // ─── WORKOUT / TRACKING ───
             if (isTracking) {
-                // 运动中：显示追踪面板
                 TrackingPanel(
                     type = trackingType,
                     distance = trackingDistance,
@@ -202,8 +162,7 @@ fun HomeScreen(viewModel: HomeViewModel) {
                     formatPace = { viewModel.formatPace(it) }
                 )
             } else {
-                // 未运动中：显示运动分类入口
-                SectionTitle("开始运动", "全部 ›")
+                SectionTitle("开始运动")
                 LazyRow(
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 20.dp),
@@ -224,15 +183,12 @@ fun HomeScreen(viewModel: HomeViewModel) {
             }
 
             // ─── ROUTE MAP ───
-            SectionTitle("运动轨迹", if (todayWorkoutDuration > 0) "今日运动 ${viewModel.formatDuration(todayWorkoutDuration)} ›" else "暂无记录 ›")
+            SectionTitle("运动轨迹",
+                if (todayWorkoutDuration > 0) "今日运动 ${viewModel.formatDuration(todayWorkoutDuration)}" else "暂无记录")
             RouteMapCard()
 
-            // ─── WEEKLY RANKING ───
-            SectionTitle("🏆 周运动排行", "排行榜 ›")
-            RankingCard(rankings)
-
             // ─── GOAL PROGRESS ───
-            SectionTitle("🎯 本月目标", "调整目标 ›")
+            SectionTitle("🎯 本月目标")
             GoalCardRealTime(
                 progress = monthlyProgress,
                 current = monthlyValue,
@@ -240,7 +196,7 @@ fun HomeScreen(viewModel: HomeViewModel) {
             )
 
             // ─── ACHIEVEMENT BADGES ───
-            SectionTitle("🏅 成就徽章", "全部 ${badges.count { it.earned }}/${badges.size} ›")
+            SectionTitle("🏅 成就徽章", "已获得 ${badges.count { it.earned }}/${badges.size}")
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 20.dp),
@@ -249,13 +205,6 @@ fun HomeScreen(viewModel: HomeViewModel) {
                 items(badges) { badge ->
                     BadgeItem(badge)
                 }
-            }
-
-            // ─── FRIEND FEED ───
-            SectionTitle("👥 好友动态", "更多 ›")
-            feeds.forEach { feed ->
-                FeedItem(feed)
-                Spacer(Modifier.height(10.dp))
             }
 
             Spacer(Modifier.height(20.dp))
@@ -275,40 +224,16 @@ fun HeaderSection() {
     ) {
         Column {
             Text("上午好 👋", color = TextSecondary, fontSize = 14.sp)
-            Text(
-                "开始今天的运动",
-                color = OnBackground,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.W700
-            )
+            Text("开始今天的运动", color = OnBackground, fontSize = 20.sp, fontWeight = FontWeight.W700)
         }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Brush.horizontalGradient(listOf(Primary, PrimaryDark))),
+            contentAlignment = Alignment.Center
         ) {
-            Box {
-                Text("\uD83D\uDD14", fontSize = 22.sp)
-                Box(
-                    modifier = Modifier
-                        .size(16.dp)
-                        .align(Alignment.TopEnd)
-                        .offset(x = 4.dp, y = (-4).dp)
-                        .clip(CircleShape)
-                        .background(ErrorRed),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("3", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.W700)
-                }
-            }
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(Brush.horizontalGradient(listOf(Primary, PrimaryDark))),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("李", color = Color.White, fontWeight = FontWeight.W700, fontSize = 16.sp)
-            }
+            Text("李", color = Color.White, fontWeight = FontWeight.W700, fontSize = 16.sp)
         }
     }
 }
@@ -316,69 +241,43 @@ fun HeaderSection() {
 // ─── CHECK-IN (REAL TIME) ───
 @Composable
 fun CheckInCardRealTime(
-    steps: Int,
-    distance: Float,
-    activeMinutes: Float,
-    calories: Float
+    steps: Int, distance: Float, activeMinutes: Float, calories: Float
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.horizontalGradient(listOf(Primary, PrimaryDark)),
-                    RoundedCornerShape(20.dp)
-                )
+                .background(Brush.horizontalGradient(listOf(Primary, PrimaryDark)), RoundedCornerShape(20.dp))
                 .padding(20.dp)
         ) {
             Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("今日步数", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
                     Text("实时更新", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
                 }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
-                ) {
+                    verticalAlignment = Alignment.Bottom) {
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Text(
-                            formatNumber(steps),
-                            fontSize = 36.sp, fontWeight = FontWeight.W900, color = Color.White
-                        )
-                        Text(
-                            " / 10,000",
-                            fontSize = 16.sp, color = Color.White.copy(alpha = 0.8f)
-                        )
+                        Text(formatNumber(steps), fontSize = 36.sp, fontWeight = FontWeight.W900, color = Color.White)
+                        Text(" / 10,000", fontSize = 16.sp, color = Color.White.copy(alpha = 0.8f))
                     }
                     Surface(
-                        shape = RoundedCornerShape(25.dp),
-                        color = Color.White.copy(alpha = 0.22f),
+                        shape = RoundedCornerShape(25.dp), color = Color.White.copy(alpha = 0.22f),
                         border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.4f))
                     ) {
                         Text(
                             if (steps >= 10000) "🎉 目标达成" else "✓ 已打卡",
                             color = Color.White, fontWeight = FontWeight.W600,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                            fontSize = 13.sp
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp), fontSize = 13.sp
                         )
                     }
                 }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(24.dp)
-                ) {
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     CheckInStat("🏃 距离", String.format("%.1fkm", distance / 1000f))
                     CheckInStat("⏱ 活跃", String.format("%.1fh", activeMinutes / 60f))
                     CheckInStat("🔥 卡路里", "${calories.toInt()}kcal")
@@ -399,23 +298,12 @@ private fun CheckInStat(label: String, value: String) {
 // ─── TRACKING PANEL ───
 @Composable
 fun TrackingPanel(
-    type: String,
-    distance: Float,
-    duration: Long,
-    calories: Float,
-    pace: Int,
-    onPause: () -> Unit,
-    onStop: () -> Unit,
-    formatDistance: (Float) -> String,
-    formatDuration: (Long) -> String,
-    formatCalories: (Float) -> String,
-    formatPace: (Int) -> String
+    type: String, distance: Float, duration: Long, calories: Float, pace: Int,
+    onPause: () -> Unit, onStop: () -> Unit,
+    formatDistance: (Float) -> String, formatDuration: (Long) -> String,
+    formatCalories: (Float) -> String, formatPace: (Int) -> String
 ) {
-    val typeEmoji = when (type) {
-        "running" -> "🏃"
-        "cycling" -> "🚴"
-        else -> "💪"
-    }
+    val typeEmoji = when (type) { "running" -> "🏃"; "cycling" -> "🚴"; else -> "💪" }
 
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
@@ -423,157 +311,43 @@ fun TrackingPanel(
         colors = CardDefaults.cardColors(containerColor = Surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Title
+        Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("$typeEmoji 运动中", fontWeight = FontWeight.W700, fontSize = 16.sp, color = Primary)
                 Spacer(Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(ErrorRed)
-                )
+                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(ErrorRed))
             }
-
             Spacer(Modifier.height(20.dp))
-
-            // Big stats
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(formatDistance(distance), fontWeight = FontWeight.W900,
-                        fontSize = 28.sp, color = OnBackground)
+                    Text(formatDistance(distance), fontWeight = FontWeight.W900, fontSize = 28.sp, color = OnBackground)
                     Text("距离", color = TextSecondary, fontSize = 12.sp)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(formatDuration(duration), fontWeight = FontWeight.W900,
-                        fontSize = 28.sp, color = OnBackground)
+                    Text(formatDuration(duration), fontWeight = FontWeight.W900, fontSize = 28.sp, color = OnBackground)
                     Text("时长", color = TextSecondary, fontSize = 12.sp)
                 }
             }
-
             Spacer(Modifier.height(16.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(formatCalories(calories), fontWeight = FontWeight.W700,
-                        fontSize = 18.sp, color = OnBackground)
+                    Text(formatCalories(calories), fontWeight = FontWeight.W700, fontSize = 18.sp, color = OnBackground)
                     Text("千卡", color = TextSecondary, fontSize = 11.sp)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(formatPace(pace), fontWeight = FontWeight.W700,
-                        fontSize = 18.sp, color = OnBackground)
+                    Text(formatPace(pace), fontWeight = FontWeight.W700, fontSize = 18.sp, color = OnBackground)
                     Text("配速", color = TextSecondary, fontSize = 11.sp)
                 }
             }
-
             Spacer(Modifier.height(20.dp))
-
-            // Control buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onPause,
-                    modifier = Modifier.weight(1f).height(48.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary)
-                ) {
-                    Text("暂停", fontWeight = FontWeight.W700)
-                }
-                Button(
-                    onClick = onStop,
-                    modifier = Modifier.weight(1f).height(48.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = ErrorRed
-                    )
-                ) {
-                    Text("结束", fontWeight = FontWeight.W700, color = Color.White)
-                }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                OutlinedButton(onClick = onPause, modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary)
+                ) { Text("暂停", fontWeight = FontWeight.W700) }
+                Button(onClick = onStop, modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)
+                ) { Text("结束", fontWeight = FontWeight.W700, color = Color.White) }
             }
-        }
-    }
-}
-
-// ─── RANKING CARD (REAL TIME) ───
-@Composable
-fun RankingCard(rankings: List<WeeklyRanking>) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 18.dp)) {
-            rankings.forEachIndexed { index, user ->
-                RankingItemDynamic(user = user, rank = index + 1)
-                if (index < rankings.lastIndex) {
-                    Divider(color = Divider, thickness = 1.dp)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RankingItemDynamic(user: WeeklyRanking, rank: Int) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            when (rank) {
-                1 -> "🥇"
-                2 -> "🥈"
-                3 -> "🥉"
-                else -> "$rank"
-            },
-            fontWeight = FontWeight.W800, fontSize = 14.sp,
-            color = when (rank) {
-                1 -> Gold; 2 -> Silver; 3 -> Bronze
-                else -> TextSecondary
-            },
-            modifier = Modifier.width(28.dp),
-            textAlign = TextAlign.Center
-        )
-
-        Box(
-            modifier = Modifier
-                .size(36.dp).clip(CircleShape)
-                .background(Color(user.avatarColor)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(user.name.take(1), color = Color.White, fontWeight = FontWeight.W700, fontSize = 13.sp)
-        }
-
-        Spacer(Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(user.name, fontWeight = FontWeight.W600, fontSize = 14.sp, color = OnBackground)
-                if (user.isMe) {
-                    Text("（你）", fontSize = 11.sp, color = Primary, fontWeight = FontWeight.W500)
-                }
-            }
-            Text("已连续运动 ${user.streakDays} 天", color = TextSecondary, fontSize = 11.sp)
-        }
-
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(
-                String.format("%.1f", user.distanceKm),
-                fontWeight = FontWeight.W800, fontSize = 15.sp, color = Primary
-            )
-            Text(" km", fontSize = 11.sp, color = TextSecondary)
         }
     }
 }
@@ -590,26 +364,19 @@ fun GoalCardRealTime(progress: Float, current: Float, target: Float) {
         colors = CardDefaults.cardColors(containerColor = Surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(80.dp), contentAlignment = Alignment.Center) {
                 Canvas(modifier = Modifier.size(80.dp)) {
                     val strokeWidth = 7.dp.toPx()
                     val radius = (size.minDimension - strokeWidth) / 2
                     val topLeft = androidx.compose.ui.geometry.Offset(
-                        (size.width - radius * 2) / 2,
-                        (size.height - radius * 2) / 2
+                        (size.width - radius * 2) / 2, (size.height - radius * 2) / 2
                     )
                     val arcSize = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
-
                     drawArc(color = Divider, startAngle = -90f, sweepAngle = 360f,
                         useCenter = false, topLeft = topLeft, size = arcSize,
                         style = Stroke(width = strokeWidth, cap = StrokeCap.Round))
-
-                    drawArc(
-                        brush = Brush.horizontalGradient(listOf(Primary, Primary.copy(alpha = 0.7f))),
+                    drawArc(brush = Brush.horizontalGradient(listOf(Primary, Primary.copy(alpha = 0.7f))),
                         startAngle = -90f, sweepAngle = sweepAngle,
                         useCenter = false, topLeft = topLeft, size = arcSize,
                         style = Stroke(width = strokeWidth, cap = StrokeCap.Round))
@@ -619,36 +386,20 @@ fun GoalCardRealTime(progress: Float, current: Float, target: Float) {
                     Text("完成", color = TextSecondary, fontSize = 8.sp)
                 }
             }
-
             Spacer(Modifier.width(20.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("本月跑步目标 ${target.toInt()}km", fontWeight = FontWeight.W700,
-                    fontSize = 15.sp, color = OnBackground)
-                Text(
-                    "已完成 ${String.format("%.1f", current)}km，还差 ${String.format("%.1f", (target - current).coerceAtLeast(0f))}km",
-                    color = TextSecondary, fontSize = 12.sp
-                )
+                Text("本月跑步目标 ${target.toInt()}km", fontWeight = FontWeight.W700, fontSize = 15.sp, color = OnBackground)
+                Text("已完成 ${String.format("%.1f", current)}km，还差 ${String.format("%.1f", (target - current).coerceAtLeast(0f))}km",
+                    color = TextSecondary, fontSize = 12.sp)
                 Spacer(Modifier.height(10.dp))
-                Box(
-                    modifier = Modifier.fillMaxWidth().height(6.dp)
-                        .clip(RoundedCornerShape(6.dp)).background(Divider)
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxHeight()
-                            .fillMaxWidth(progress.coerceAtMost(1f))
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Brush.horizontalGradient(listOf(Primary, Primary.copy(alpha = 0.7f))))
-                    )
+                Box(modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(6.dp)).background(Divider)) {
+                    Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(progress.coerceAtMost(1f))
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Brush.horizontalGradient(listOf(Primary, Primary.copy(alpha = 0.7f)))))
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("0km", color = TextTertiary, fontSize = 10.sp)
-                    Text(
-                        "${String.format("%.1f", current)}km",
-                        color = Primary, fontWeight = FontWeight.W600, fontSize = 10.sp
-                    )
+                    Text("${String.format("%.1f", current)}km", color = Primary, fontWeight = FontWeight.W600, fontSize = 10.sp)
                     Text("${target.toInt()}km", color = TextTertiary, fontSize = 10.sp)
                 }
             }
@@ -656,14 +407,11 @@ fun GoalCardRealTime(progress: Float, current: Float, target: Float) {
     }
 }
 
-// ─── WORKOUT COMPLETE DIALOG ───
+// ─── WORKOUT COMPLETE DIALOG (无分享按钮) ───
 @Composable
 fun WorkoutCompleteDialog(
-    distanceKm: Float,
-    durationMin: Int,
-    calories: Float,
-    onDismiss: () -> Unit,
-    onShare: () -> Unit
+    distanceKm: Float, durationMin: Int, calories: Float,
+    onDismiss: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -671,69 +419,59 @@ fun WorkoutCompleteDialog(
         containerColor = Surface,
         title = null,
         text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    modifier = Modifier.size(72.dp).clip(CircleShape).background(PrimaryLight),
-                    contentAlignment = Alignment.Center
-                ) { Text("🎉", fontSize = 36.sp) }
+            Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(modifier = Modifier.size(72.dp).clip(CircleShape).background(PrimaryLight),
+                    contentAlignment = Alignment.Center) { Text("🎉", fontSize = 36.sp) }
                 Spacer(Modifier.height(12.dp))
                 Text("运动完成！", fontWeight = FontWeight.W800, fontSize = 20.sp, color = OnBackground)
-                Surface(
-                    modifier = Modifier.padding(top = 8.dp),
-                    shape = RoundedCornerShape(20.dp), color = PrimaryLight
-                ) {
-                    Text("今日份汗水已达标，继续加油 💪",
-                        color = Primary, fontWeight = FontWeight.W600, fontSize = 13.sp,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
-                }
                 Spacer(Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(String.format("%.1f", distanceKm),
-                            fontWeight = FontWeight.W900, fontSize = 20.sp, color = OnBackground)
+                        Text(String.format("%.1f", distanceKm), fontWeight = FontWeight.W900, fontSize = 20.sp, color = OnBackground)
                         Text("公里", color = TextSecondary, fontSize = 11.sp)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("$durationMin", fontWeight = FontWeight.W900,
-                            fontSize = 20.sp, color = OnBackground)
+                        Text("$durationMin", fontWeight = FontWeight.W900, fontSize = 20.sp, color = OnBackground)
                         Text("分钟", color = TextSecondary, fontSize = 11.sp)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("${calories.toInt()}", fontWeight = FontWeight.W900,
-                            fontSize = 20.sp, color = OnBackground)
+                        Text("${calories.toInt()}", fontWeight = FontWeight.W900, fontSize = 20.sp, color = OnBackground)
                         Text("千卡", color = TextSecondary, fontSize = 11.sp)
                     }
                 }
-                Spacer(Modifier.height(20.dp))
-                Button(
-                    onClick = onShare,
-                    shape = RoundedCornerShape(25.dp),
+                Spacer(Modifier.height(24.dp))
+                Button(onClick = onDismiss, shape = RoundedCornerShape(25.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
-                ) { Text("分享打卡", fontWeight = FontWeight.W700, fontSize = 15.sp) }
-                Spacer(Modifier.height(8.dp))
-                TextButton(onClick = onDismiss) { Text("完成", color = TextSecondary) }
+                ) { Text("完成", fontWeight = FontWeight.W700, fontSize = 15.sp) }
             }
         },
-        confirmButton = {},
-        dismissButton = {}
+        confirmButton = {}, dismissButton = {}
     )
+}
+
+// ─── SIMPLE BOTTOM BAR ───
+@Composable
+fun SimpleBottomBar() {
+    Surface(
+        modifier = Modifier.fillMaxWidth().height(70.dp),
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        color = Surface.copy(alpha = 0.92f),
+        shadowElevation = 8.dp
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("🏃 轻动 · 你的私人运动记录", color = TextSecondary, fontSize = 12.sp)
+        }
+    }
 }
 
 // ─── 格式化 ───
 private fun formatNumber(n: Int): String {
-    return if (n >= 10000) {
-        String.format("%.1f", n / 10000f) + "万"
-    } else {
-        String.format("%,d", n)
-    }
+    return if (n >= 10000) String.format("%.1f", n / 10000f) + "万"
+    else String.format("%,d", n)
 }
-
-
