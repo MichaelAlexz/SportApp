@@ -126,115 +126,7 @@ fun DashCard(item: DashBoardItem) {
     }
 }
 
-// ───────── TODAY CHECK-IN ─────────
-@Composable
-fun CheckInCard() {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(Primary, PrimaryDark)
-                    ),
-                    RoundedCornerShape(20.dp)
-                )
-                .padding(20.dp)
-        ) {
-            // Decorative circles
-            Canvas(modifier = Modifier.matchParentSize()) {
-                drawCircle(
-                    color = Color.White.copy(alpha = 0.08f),
-                    radius = 70.dp.toPx(),
-                    center = Offset(size.width - 30.dp.toPx(), 20.dp.toPx())
-                )
-                drawCircle(
-                    color = Color.White.copy(alpha = 0.05f),
-                    radius = 50.dp.toPx(),
-                    center = Offset(20.dp.toPx(), size.height + 10.dp.toPx())
-                )
-            }
-
-            Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("今日步数", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
-                    Text("2026年5月19日 周三", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(
-                            "6,842",
-                            fontSize = 36.sp,
-                            fontWeight = FontWeight.W900,
-                            color = Color.White
-                        )
-                        Text(
-                            " / 10,000",
-                            fontSize = 16.sp,
-                            color = Color.White.copy(alpha = 0.8f)
-                        )
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(25.dp),
-                        color = Color.White.copy(alpha = 0.22f),
-                        border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.4f)),
-                        modifier = Modifier
-                    ) {
-                        Text(
-                            "✓ 已打卡",
-                            color = Color.White,
-                            fontWeight = FontWeight.W600,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                            fontSize = 13.sp
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(24.dp)
-                ) {
-                    CheckInStat("🏃 距离", "2.3km")
-                    CheckInStat("⏱ 活跃", "4.2h")
-                    CheckInStat("🔥 卡路里", "320kcal")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CheckInStat(label: String, value: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
-        Text(
-            " $value",
-            color = Color.White,
-            fontWeight = FontWeight.W700,
-            fontSize = 14.sp
-        )
-    }
-}
-
-// ───────── WORKOUT CARD ─────────
+// ───────── WORKOUT CARD (NO STATS) ─────────
 @Composable
 fun WorkoutCard(category: WorkoutCategory, onClick: () -> Unit = {}) {
     Card(
@@ -303,7 +195,6 @@ fun RouteMapCard() {
 
             Spacer(Modifier.height(12.dp))
 
-            // Map visualization
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -320,7 +211,6 @@ fun RouteMapCard() {
                         )
                     )
             ) {
-                // Roads
                 listOf(
                     0.28f to 0.42f, 0.50f to 0.55f, 0.72f to 0.38f
                 ).forEachIndexed { index, (top, width) ->
@@ -336,7 +226,6 @@ fun RouteMapCard() {
                             .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(2.dp))
                     )
                 }
-                // Vertical roads
                 Box(
                     modifier = Modifier
                         .width(3.dp)
@@ -354,7 +243,6 @@ fun RouteMapCard() {
                         .background(Color.White.copy(alpha = 0.25f), RoundedCornerShape(2.dp))
                 )
 
-                // Route path
                 Canvas(modifier = Modifier.matchParentSize()) {
                     val path = Path().apply {
                         moveTo(20.dp.toPx(), 105.dp.toPx())
@@ -371,7 +259,6 @@ fun RouteMapCard() {
                     )
                 }
 
-                // Start dot
                 Box(
                     modifier = Modifier
                         .size(12.dp)
@@ -380,7 +267,6 @@ fun RouteMapCard() {
                         .background(Primary)
                         .border(3.dp, Color.White, CircleShape)
                 )
-                // End dot
                 Box(
                     modifier = Modifier
                         .size(12.dp)
@@ -389,7 +275,6 @@ fun RouteMapCard() {
                         .background(Primary)
                         .border(3.dp, Color.White, CircleShape)
                 )
-                // Current dot (animated)
                 Box(
                     modifier = Modifier
                         .size(16.dp)
@@ -399,7 +284,6 @@ fun RouteMapCard() {
                         .border(3.dp, Color.White, CircleShape)
                 )
 
-                // Badge
                 Surface(
                     modifier = Modifier
                         .padding(8.dp)
@@ -415,7 +299,6 @@ fun RouteMapCard() {
                     )
                 }
 
-                // POI labels
                 Text(
                     "⛳ 起点",
                     color = Color.Black.copy(alpha = 0.25f),
@@ -464,194 +347,7 @@ private fun MapStatItem(value: String, label: String) {
     }
 }
 
-// ───────── RANKING ─────────
-@Composable
-fun RankingCard(users: List<RankingUser>) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 18.dp)) {
-            users.forEachIndexed { index, user ->
-                RankingItem(user)
-                if (index < users.lastIndex) {
-                    Divider(color = Divider, thickness = 1.dp)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RankingItem(user: RankingUser) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            when (user.rank) {
-                1 -> "🥇"
-                2 -> "🥈"
-                3 -> "🥉"
-                else -> "${user.rank}"
-            },
-            fontWeight = FontWeight.W800,
-            fontSize = 14.sp,
-            color = when (user.rank) {
-                1 -> Gold
-                2 -> Silver
-                3 -> Bronze
-                else -> TextSecondary
-            },
-            modifier = Modifier.width(28.dp),
-            textAlign = TextAlign.Center
-        )
-
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(Color(user.avatarColor)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(user.name.take(1), color = Color.White, fontWeight = FontWeight.W700, fontSize = 13.sp)
-        }
-
-        Spacer(Modifier.width(10.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(user.name, fontWeight = FontWeight.W600, fontSize = 14.sp, color = OnBackground)
-                if (user.isMe) {
-                    Text(
-                        "（你）",
-                        fontSize = 11.sp,
-                        color = Primary,
-                        fontWeight = FontWeight.W500
-                    )
-                }
-            }
-            Text(user.duration, color = TextSecondary, fontSize = 11.sp)
-        }
-
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(
-                String.format("%.1f", user.distance),
-                fontWeight = FontWeight.W800,
-                fontSize = 15.sp,
-                color = Primary
-            )
-            Text(" km", fontSize = 11.sp, color = TextSecondary)
-        }
-    }
-}
-
-// ───────── GOAL PROGRESS ─────────
-@Composable
-fun GoalCard() {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier.size(80.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Canvas(modifier = Modifier.size(80.dp)) {
-                    val strokeWidth = 7.dp.toPx()
-                    val radius = (size.minDimension - strokeWidth) / 2
-                    val topLeft = Offset(
-                        (size.width - radius * 2) / 2,
-                        (size.height - radius * 2) / 2
-                    )
-
-                    // Background circle
-                    drawArc(
-                        color = Divider,
-                        startAngle = -90f,
-                        sweepAngle = 360f,
-                        useCenter = false,
-                        topLeft = topLeft,
-                        size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2),
-                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                    )
-
-                    // Foreground circle (80%)
-                    drawArc(
-                        brush = Brush.horizontalGradient(listOf(Primary, Primary.copy(alpha = 0.7f))),
-                        startAngle = -90f,
-                        sweepAngle = 288f, // 80% of 360
-                        useCenter = false,
-                        topLeft = topLeft,
-                        size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2),
-                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                    )
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "80%",
-                        fontWeight = FontWeight.W900,
-                        fontSize = 18.sp,
-                        color = Primary
-                    )
-                    Text("完成", color = TextSecondary, fontSize = 8.sp)
-                }
-            }
-
-            Spacer(Modifier.width(20.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text("本月跑步目标 100km", fontWeight = FontWeight.W700, fontSize = 15.sp, color = OnBackground)
-                Text("已完成 80km，还差 20km", color = TextSecondary, fontSize = 12.sp)
-
-                Spacer(Modifier.height(10.dp))
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Divider)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .fillMaxWidth(0.8f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(
-                                Brush.horizontalGradient(listOf(Primary, Primary.copy(alpha = 0.7f)))
-                            )
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("0km", color = TextTertiary, fontSize = 10.sp)
-                    Text("80km", color = Primary, fontWeight = FontWeight.W600, fontSize = 10.sp)
-                    Text("100km", color = TextTertiary, fontSize = 10.sp)
-                }
-            }
-        }
-    }
-}
-
-// ───────── ACHIEVEMENT BADGE ─────────
+// ───────── BADGE ─────────
 @Composable
 fun BadgeItem(badge: AchievementBadge) {
     Column(
@@ -684,9 +380,12 @@ fun BadgeItem(badge: AchievementBadge) {
     }
 }
 
-// ───────── FEED ITEM ─────────
+// ───────── FEED ITEM (INTERACTIVE) ─────────
 @Composable
 fun FeedItem(feed: FriendFeed) {
+    var liked by remember { mutableStateOf(feed.liked) }
+    var likeCount by remember { mutableStateOf(feed.likes) }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -755,23 +454,32 @@ fun FeedItem(feed: FriendFeed) {
                     .padding(top = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // 点赞按钮（可交互）
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable {
+                        liked = !liked
+                        likeCount += if (liked) 1 else -1
+                    }
+                ) {
                     Text(
-                        if (feed.liked) "❤️" else "🤍",
+                        if (liked) "❤️" else "🤍",
                         fontSize = 13.sp
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        "${feed.likes}",
-                        color = if (feed.liked) ErrorRed else TextSecondary,
+                        "$likeCount",
+                        color = if (liked) ErrorRed else TextSecondary,
                         fontSize = 12.sp
                     )
                 }
+                // 评论
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("💬", fontSize = 13.sp)
                     Spacer(Modifier.width(4.dp))
                     Text("${feed.comments}", color = TextSecondary, fontSize = 12.sp)
                 }
+                // 分享
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("↗️", fontSize = 13.sp)
                     Spacer(Modifier.width(4.dp))
@@ -782,9 +490,12 @@ fun FeedItem(feed: FriendFeed) {
     }
 }
 
-// ───────── BOTTOM NAV ─────────
+// ───────── BOTTOM NAV (INTERACTIVE) ─────────
 @Composable
-fun BottomNavBar() {
+fun BottomNavBar(
+    selectedTab: Int = 0,
+    onTabSelected: (Int) -> Unit = {}
+) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -798,9 +509,19 @@ fun BottomNavBar() {
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            BottomNavItem(icon = "\uD83C\uDFE0", label = "首页", active = true)
-            BottomNavItem(icon = "\u23F0", label = "运动", active = false)
-            // Center button
+            // 首页
+            BottomNavItem(
+                icon = "\uD83C\uDFE0", label = "首页",
+                active = selectedTab == 0,
+                onClick = { onTabSelected(0) }
+            )
+            // 运动
+            BottomNavItem(
+                icon = "\u23F0", label = "运动",
+                active = selectedTab == 1,
+                onClick = { onTabSelected(1) }
+            )
+            // 中央按钮
             Box(
                 modifier = Modifier
                     .size(52.dp)
@@ -808,22 +529,35 @@ fun BottomNavBar() {
                     .clip(CircleShape)
                     .background(
                         Brush.horizontalGradient(listOf(Primary, PrimaryDark))
-                    ),
+                    )
+                    .clickable { onTabSelected(2) },
                 contentAlignment = Alignment.Center
             ) {
                 Text("✓", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.W900)
             }
-            BottomNavItem(icon = "\u2764\uFE0F", label = "动态", active = false)
-            BottomNavItem(icon = "\uD83D\uDC64", label = "我的", active = false)
+            // 动态
+            BottomNavItem(
+                icon = "\u2764\uFE0F", label = "动态",
+                active = selectedTab == 3,
+                onClick = { onTabSelected(3) }
+            )
+            // 我的
+            BottomNavItem(
+                icon = "\uD83D\uDC64", label = "我的",
+                active = selectedTab == 4,
+                onClick = { onTabSelected(4) }
+            )
         }
     }
 }
 
 @Composable
-private fun BottomNavItem(icon: String, label: String, active: Boolean) {
+private fun BottomNavItem(icon: String, label: String, active: Boolean, onClick: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.padding(vertical = 6.dp)
+        modifier = Modifier
+            .padding(vertical = 6.dp)
+            .clickable { onClick() }
     ) {
         Text(icon, fontSize = 20.sp)
         Text(
@@ -891,7 +625,13 @@ fun ReminderDialog(onDismiss: () -> Unit, onStart: () -> Unit) {
 
 // ───────── WORKOUT COMPLETE DIALOG ─────────
 @Composable
-fun WorkoutCompleteDialog(onDismiss: () -> Unit, onShare: () -> Unit) {
+fun WorkoutCompleteDialog(
+    distanceKm: Float,
+    durationMin: Int,
+    calories: Float,
+    onDismiss: () -> Unit,
+    onShare: () -> Unit
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(28.dp),
@@ -903,31 +643,18 @@ fun WorkoutCompleteDialog(onDismiss: () -> Unit, onShare: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(CircleShape)
-                        .background(PrimaryLight),
+                    modifier = Modifier.size(72.dp).clip(CircleShape).background(PrimaryLight),
                     contentAlignment = Alignment.Center
-                ) {
-                    Text("🎉", fontSize = 36.sp)
-                }
+                ) { Text("🎉", fontSize = 36.sp) }
                 Spacer(Modifier.height(12.dp))
-                Text(
-                    "运动完成！",
-                    fontWeight = FontWeight.W800,
-                    fontSize = 20.sp,
-                    color = OnBackground
-                )
+                Text("运动完成！", fontWeight = FontWeight.W800, fontSize = 20.sp, color = OnBackground)
                 Surface(
                     modifier = Modifier.padding(top = 8.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    color = PrimaryLight
+                    shape = RoundedCornerShape(20.dp), color = PrimaryLight
                 ) {
                     Text(
-                        "今日份汗水已达标，继续加油 💪",
-                        color = Primary,
-                        fontWeight = FontWeight.W600,
-                        fontSize = 13.sp,
+                        if (distanceKm > 0) "太棒了！继续保持 💪" else "今日份汗水已达标，继续加油 💪",
+                        color = Primary, fontWeight = FontWeight.W600, fontSize = 13.sp,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
                     )
                 }
@@ -938,35 +665,31 @@ fun WorkoutCompleteDialog(onDismiss: () -> Unit, onShare: () -> Unit) {
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("5.2", fontWeight = FontWeight.W900, fontSize = 20.sp, color = OnBackground)
+                        Text(String.format("%.1f", distanceKm),
+                            fontWeight = FontWeight.W900, fontSize = 20.sp, color = OnBackground)
                         Text("公里", color = TextSecondary, fontSize = 11.sp)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("32", fontWeight = FontWeight.W900, fontSize = 20.sp, color = OnBackground)
+                        Text("$durationMin", fontWeight = FontWeight.W900,
+                            fontSize = 20.sp, color = OnBackground)
                         Text("分钟", color = TextSecondary, fontSize = 11.sp)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("286", fontWeight = FontWeight.W900, fontSize = 20.sp, color = OnBackground)
+                        Text("${calories.toInt()}", fontWeight = FontWeight.W900,
+                            fontSize = 20.sp, color = OnBackground)
                         Text("千卡", color = TextSecondary, fontSize = 11.sp)
                     }
                 }
-
                 Spacer(Modifier.height(20.dp))
                 Button(
                     onClick = onShare,
                     shape = RoundedCornerShape(25.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
-                ) {
-                    Text("分享打卡", fontWeight = FontWeight.W700, fontSize = 15.sp)
-                }
+                ) { Text("分享打卡", fontWeight = FontWeight.W700, fontSize = 15.sp) }
                 Spacer(Modifier.height(8.dp))
-                TextButton(onClick = onDismiss) {
-                    Text("完成", color = TextSecondary)
-                }
+                TextButton(onClick = onDismiss) { Text("完成", color = TextSecondary) }
             }
         },
         confirmButton = {},

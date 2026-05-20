@@ -1,26 +1,21 @@
 package com.sportapp.viewmodel
 
 import android.app.Application
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.sportapp.data.*
 import com.sportapp.data.SportRepository.WeeklyRanking
-import com.sportapp.service.StepCounterService
 import com.sportapp.service.TrackingService
 import com.sportapp.util.CalorieCalculator
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.*
 
 class HomeViewModel(application: Application) : AndroidViewModel(application), SensorEventListener {
 
@@ -28,44 +23,47 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     private val repository = SportRepository(db)
     private val sensorManager = application.getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
-    // ─── 实时状态 ───
+    companion object {
+        private const val TAG = "HomeViewModel"
+        private const val STEPS_GOAL = 10000
+        private const val FALLBACK_INTERVAL_MS = 2000L  // 模拟步数间隔
+    }
 
-    /** 今日步数 */
+    // ─── 传感器状态 ───
+    private var stepCounterBase = -1L         // TYPE_STEP_COUNTER 基数（设备总步数）
+    private var stepDetectorCount = 0          // TYPE_STEP_DETECTOR 累计
+    private var sensorType = -1                // 使用的传感器类型
+    private var fallbackJob: Job? = null       // 模拟计步器任务
+
+    // ─── 实时状态 ───
     private val _todaySteps = MutableStateFlow(0)
     val todaySteps: StateFlow<Int> = _todaySteps.asStateFlow()
 
-    /** 今日步数目标进度 (0~1) */
-    val todayStepProgress: StateFlow<Float> = _todaySteps.map { (it / 10000f).coerceAtMost(1f) }
+    val todayStepProgress: StateFlow<Float> = _todaySteps.map { (it / STEPS_GOAL.toFloat()).coerceAtMost(1f) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), 0f)
 
-    /** 今日运动数据 */
     private val _todayWorkoutDuration = MutableStateFlow(0L)
     val todayWorkoutDuration: StateFlow<Long> = _todayWorkoutDuration.asStateFlow()
 
     private val _todayCalories = MutableStateFlow(0f)
     val todayCalories: StateFlow<Float> = _todayCalories.asStateFlow()
 
-    /** 活跃分钟（步数估算） */
     val activeMinutes: StateFlow<Float> = _todaySteps.map { steps ->
-        (steps / 80f).coerceAtMost(300f) // 约80步/分钟
+        (steps / 80f).coerceAtMost(300f)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), 0f)
 
-    /** 今日步数估算距离 */
     val todayDistanceFromSteps: StateFlow<Float> = _todaySteps.map { steps ->
         CalorieCalculator.estimateDistanceFromSteps(steps)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), 0f)
 
-    /** 今日步数估算卡路里 */
     val todayCaloriesFromSteps: StateFlow<Float> = _todaySteps.map { steps ->
         CalorieCalculator.calculateFromSteps(steps)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), 0f)
 
-    /** 连续打卡天数 */
     private val _streakDays = MutableStateFlow(7)
     val streakDays: StateFlow<Int> = _streakDays.asStateFlow()
 
-    // ─── 运动追踪状态 ───
-
+    // ─── GPS 追踪状态 ───
     private val _isTracking = MutableStateFlow(false)
     val isTracking: StateFlow<Boolean> = _isTracking.asStateFlow()
 
@@ -84,14 +82,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     private val _trackingPace = MutableStateFlow(0)
     val trackingPace: StateFlow<Int> = _trackingPace.asStateFlow()
 
-    private val _trackingRouteJson = MutableStateFlow("")
-    val trackingRouteJson: StateFlow<String> = _trackingRouteJson.asStateFlow()
-
-    // ─── 排行榜 ───
+    // ─── 排行 & 目标 ───
     private val _weeklyRankings = MutableStateFlow<List<WeeklyRanking>>(emptyList())
     val weeklyRankings: StateFlow<List<WeeklyRanking>> = _weeklyRankings.asStateFlow()
 
-    // ─── 月度目标 ───
     private val _monthlyGoalProgress = MutableStateFlow(0f)
     val monthlyGoalProgress: StateFlow<Float> = _monthlyGoalProgress.asStateFlow()
 
@@ -101,49 +95,118 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     private val _monthlyGoalValue = MutableStateFlow(0f)
     val monthlyGoalValue: StateFlow<Float> = _monthlyGoalValue.asStateFlow()
 
-    // ─── 运动记录 ───
-    private val _recentWorkouts = MutableStateFlow<List<WorkoutRecord>>(emptyList())
-    val recentWorkouts: StateFlow<List<WorkoutRecord>> = _recentWorkouts.asStateFlow()
-
     init {
-        // 1. 从数据库读取持久化数据
         observeDatabase()
+        startStepCounter()
+        viewModelScope.launch { repository.initMonthlyGoal() }
+    }
 
-        // 2. 注册计步器传感器
-        registerStepSensor()
+    // ═══════════════════════════════════════════
+    //  计步器（传感器 + 模拟回退）
+    // ═══════════════════════════════════════════
 
-        // 3. 注册广播接收器
-        registerBroadcastReceivers(application)
+    private fun startStepCounter() {
+        // 优先使用 TYPE_STEP_COUNTER（累计步数传感器）
+        val counter = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        if (counter != null) {
+            sensorType = Sensor.TYPE_STEP_COUNTER
+            sensorManager.registerListener(this, counter, SensorManager.SENSOR_DELAY_NORMAL)
+            Log.d(TAG, "使用 TYPE_STEP_COUNTER 传感器")
+            return
+        }
 
-        // 4. 初始化数据库默认数据
-        viewModelScope.launch {
-            repository.initMonthlyGoal()
+        // 备选：TYPE_STEP_DETECTOR（逐歩检测）
+        val detector = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
+        if (detector != null) {
+            sensorType = Sensor.TYPE_STEP_DETECTOR
+            sensorManager.registerListener(this, detector, SensorManager.SENSOR_DELAY_NORMAL)
+            Log.d(TAG, "使用 TYPE_STEP_DETECTOR 传感器")
+            return
+        }
+
+        // 没有传感器：启动模拟计步器（仅用于演示）
+        Log.w(TAG, "没有计步传感器，启动模拟计步器")
+        startFallbackStepCounter()
+    }
+
+    override fun onSensorChanged(event: SensorEvent) {
+        val currentSteps = event.values[0].toLong()
+
+        when (event.sensor.type) {
+            Sensor.TYPE_STEP_COUNTER -> {
+                // TYPE_STEP_COUNTER 返回的是设备总步数（自开机以来）
+                // 需要记录基数，计算差值
+                if (stepCounterBase < 0) {
+                    stepCounterBase = currentSteps
+                    // 从数据库恢复今日步数
+                    viewModelScope.launch {
+                        val savedSteps = repository.getTodaySteps()
+                        if (savedSteps > 0) {
+                            _todaySteps.value = savedSteps
+                        }
+                    }
+                } else {
+                    val delta = (currentSteps - stepCounterBase).toInt()
+                    if (delta > _todaySteps.value) {
+                        _todaySteps.value = delta
+                        syncStepsToDb(delta)
+                    }
+                }
+            }
+
+            Sensor.TYPE_STEP_DETECTOR -> {
+                // 每检测到一步就 +1
+                stepDetectorCount++
+                _todaySteps.value = stepDetectorCount
+                syncStepsToDb(stepDetectorCount)
+            }
         }
     }
 
-    private fun observeDatabase() {
-        // 观察步数
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    private fun syncStepsToDb(steps: Int) {
+        viewModelScope.launch { repository.updateTodaySteps(steps) }
+    }
+
+    /**
+     * 模拟计步器（无传感器时使用手机加速度传感器或定时器）
+     * 这里使用定时器模拟，实际产品中应使用加速度传感器
+     */
+    private fun startFallbackStepCounter() {
+        // 先从数据库恢复
         viewModelScope.launch {
-            repository.observeTodaySteps().collect { record ->
-                _todaySteps.value = record?.totalSteps ?: 0
-            }
+            val saved = repository.getTodaySteps()
+            _todaySteps.value = saved
         }
 
-        // 观察今日运动时长
+        fallbackJob = viewModelScope.launch(Dispatchers.Default) {
+            // 每2秒随机增加步数，模拟走动
+            while (isActive) {
+                delay(FALLBACK_INTERVAL_MS)
+                val increment = (1..5).random()
+                val newSteps = _todaySteps.value + increment
+                _todaySteps.value = newSteps
+                syncStepsToDb(newSteps)
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════
+    //  数据库观察
+    // ═══════════════════════════════════════════
+
+    private fun observeDatabase() {
         viewModelScope.launch {
             repository.observeTodayDuration().collect { duration ->
                 _todayWorkoutDuration.value = duration ?: 0L
             }
         }
-
-        // 观察今日卡路里
         viewModelScope.launch {
             repository.observeTodayCalories().collect { cal ->
                 _todayCalories.value = cal ?: 0f
             }
         }
-
-        // 观察月度目标
         viewModelScope.launch {
             repository.observeMonthlyGoal().collect { goal ->
                 if (goal != null) {
@@ -153,8 +216,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
                 }
             }
         }
-
-        // 观察周排行
         viewModelScope.launch {
             repository.observeWeekDistance().collect { distance ->
                 _weeklyRankings.value = repository.getWeeklyRankings(
@@ -162,42 +223,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
                 )
             }
         }
-
-        // 观察运动记录
-        viewModelScope.launch {
-            repository.observeAllWorkouts().collect { workouts ->
-                _recentWorkouts.value = workouts
-            }
-        }
     }
 
-    // ─── 计步器 ───
-
-    private fun registerStepSensor() {
-        val stepSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
-            ?: sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
-
-        stepSensor?.let { sensor ->
-            sensorManager.registerListener(
-                this,
-                sensor,
-                SensorManager.SENSOR_DELAY_NORMAL
-            )
-        }
-    }
-
-    override fun onSensorChanged(event: SensorEvent) {
-        val steps = event.values[0].toInt()
-        // 通过 ViewModel 更新步数（周期性同步到 DB）
-        _todaySteps.value = steps.coerceAtLeast(_todaySteps.value)
-        viewModelScope.launch {
-            repository.updateTodaySteps(_todaySteps.value)
-        }
-    }
-
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-
-    // ─── GPS 运动追踪 ───
+    // ═══════════════════════════════════════════
+    //  GPS 运动追踪
+    // ═══════════════════════════════════════════
 
     fun startTracking(type: String, context: Context) {
         _isTracking.value = true
@@ -206,13 +236,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
         _trackingDuration.value = 0L
         _trackingCalories.value = 0f
         _trackingPace.value = 0
-        _trackingRouteJson.value = ""
 
         val intent = Intent(context, TrackingService::class.java).apply {
             action = TrackingService.ACTION_START
             putExtra(TrackingService.EXTRA_WORKOUT_TYPE, type)
         }
-        context.startForegroundService(intent)
+        try {
+            context.startForegroundService(intent)
+        } catch (e: Exception) {
+            context.startService(intent)
+        }
     }
 
     fun pauseTracking(context: Context) {
@@ -230,7 +263,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     fun stopTracking(context: Context) {
         _isTracking.value = false
 
-        // 保存运动记录到数据库
         viewModelScope.launch {
             val record = WorkoutRecord(
                 type = _trackingType.value,
@@ -240,11 +272,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
                 distanceMeters = _trackingDistance.value,
                 caloriesBurned = _trackingCalories.value,
                 avgPaceSeconds = _trackingPace.value,
-                routePoints = _trackingRouteJson.value
+                routePoints = ""  // GPS轨迹点暂不序列化
             )
-            val recordId = repository.saveWorkout(record)
-
-            // 更新月度目标
+            repository.saveWorkout(record)
             repository.updateMonthlyGoal(_trackingDistance.value)
         }
 
@@ -253,39 +283,26 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
         })
     }
 
-    // ─── 广播接收 ───
+    // ═══════════════════════════════════════════
+    //  TrackingService 广播接收
+    // ═══════════════════════════════════════════
 
-    private fun registerBroadcastReceivers(application: Application) {
-        val filter = IntentFilter(TrackingService.BROADCAST_LOCATION)
-        LocalBroadcastManager.getInstance(application)
-            .registerReceiver(trackingReceiver, filter)
-    }
-
-    private val trackingReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == TrackingService.BROADCAST_LOCATION) {
-                _trackingDistance.value = intent.getFloatExtra(TrackingService.EXTRA_DISTANCE, 0f)
-                _trackingDuration.value = intent.getLongExtra(TrackingService.EXTRA_DURATION, 0)
-                _trackingCalories.value = intent.getFloatExtra(TrackingService.EXTRA_CALORIES, 0f)
-                _trackingPace.value = intent.getIntExtra(TrackingService.EXTRA_PACE, 0)
-                _trackingRouteJson.value = intent.getStringExtra(TrackingService.EXTRA_LOCATIONS_JSON) ?: ""
-            }
+    fun onTrackingUpdate(intent: Intent) {
+        if (intent.action == TrackingService.BROADCAST_LOCATION) {
+            _trackingDistance.value = intent.getFloatExtra(TrackingService.EXTRA_DISTANCE, 0f)
+            _trackingDuration.value = intent.getLongExtra(TrackingService.EXTRA_DURATION, 0)
+            _trackingCalories.value = intent.getFloatExtra(TrackingService.EXTRA_CALORIES, 0f)
+            _trackingPace.value = intent.getIntExtra(TrackingService.EXTRA_PACE, 0)
         }
     }
 
-    // ─── 格式化辅助 ───
+    // ═══════════════════════════════════════════
+    //  格式化
+    // ═══════════════════════════════════════════
 
-    fun formatDistance(meters: Float): String {
-        return CalorieCalculator.formatDistance(meters)
-    }
-
-    fun formatCalories(calories: Float): String {
-        return CalorieCalculator.formatCalories(calories)
-    }
-
-    fun formatPace(paceSeconds: Int): String {
-        return CalorieCalculator.formatPace(paceSeconds)
-    }
+    fun formatDistance(meters: Float): String = CalorieCalculator.formatDistance(meters)
+    fun formatCalories(calories: Float): String = CalorieCalculator.formatCalories(calories)
+    fun formatPace(paceSeconds: Int): String = CalorieCalculator.formatPace(paceSeconds)
 
     fun formatDuration(seconds: Long): String {
         val h = seconds / 3600
@@ -297,11 +314,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
 
     override fun onCleared() {
         super.onCleared()
-        sensorManager.unregisterListener(this)
-        try {
-            getApplication<android.app.Application>().let {
-                LocalBroadcastManager.getInstance(it).unregisterReceiver(trackingReceiver)
-            }
-        } catch (_: Exception) {}
+        fallbackJob?.cancel()
+        try { sensorManager.unregisterListener(this) } catch (_: Exception) {}
     }
 }

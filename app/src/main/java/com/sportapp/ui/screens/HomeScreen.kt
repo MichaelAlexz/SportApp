@@ -1,6 +1,7 @@
 package com.sportapp.ui.screens
 
 import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -59,6 +60,8 @@ fun HomeScreen(viewModel: HomeViewModel) {
     // UI 状态
     var showReminder by remember { mutableStateOf(true) }
     var showWorkoutComplete by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableStateOf(0) }
+    var showShareToast by remember { mutableStateOf(false) }
 
     // 动态仪表盘数据
     val dashboardItems = remember(todaySteps, todayWorkoutDuration, todayCalories) {
@@ -121,13 +124,31 @@ fun HomeScreen(viewModel: HomeViewModel) {
             durationMin = (trackingDuration / 60).toInt(),
             calories = trackingCalories,
             onDismiss = { showWorkoutComplete = false },
-            onShare = { showWorkoutComplete = false }
+            onShare = {
+                showWorkoutComplete = false
+                // 分享打卡到其他APP
+                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_TEXT,
+                        "🏃 我在轻动完成了运动！\n" +
+                        "距离: ${String.format("%.1f", trackingDistance / 1000f)}km\n" +
+                        "时长: ${trackingDuration / 60}分钟\n" +
+                        "消耗: ${trackingCalories.toInt()}千卡\n" +
+                        "一起来运动吧！💪")
+                }
+                context.startActivity(android.content.Intent.createChooser(shareIntent, "分享打卡"))
+            }
         )
     }
 
     Scaffold(
         containerColor = Background,
-        bottomBar = { BottomNavBar() }
+        bottomBar = {
+            BottomNavBar(
+                selectedTab = selectedTab,
+                onTabSelected = { selectedTab = it }
+            )
+        }
     ) { paddingValues ->
         Column(
             modifier = Modifier
