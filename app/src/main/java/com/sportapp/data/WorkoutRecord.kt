@@ -27,5 +27,7 @@ data class WorkoutRecord(
         const val TYPE_RUNNING = "running"
         const val TYPE_CYCLING = "cycling"
         const val TYPE_FITNESS = "fitness"
+        const val TYPE_STAIRS = "stairs"
+        const val TYPE_WALKING = "walking"
     }
 }

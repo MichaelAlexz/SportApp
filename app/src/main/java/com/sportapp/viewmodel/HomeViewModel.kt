@@ -81,6 +81,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     private val _trackingPace = MutableStateFlow(0)
     val trackingPace: StateFlow<Int> = _trackingPace.asStateFlow()
 
+    // 暂停状态（true=已暂停, false=运动中）
+    private val _isTrackingPaused = MutableStateFlow(false)
+    val isTrackingPaused: StateFlow<Boolean> = _isTrackingPaused.asStateFlow()
+
+    // ─── 运动记录 ───
+    private val _recentWorkouts = MutableStateFlow<List<WorkoutRecord>>(emptyList())
+    val recentWorkouts: StateFlow<List<WorkoutRecord>> = _recentWorkouts.asStateFlow()
+
     // ─── 目标 ───
 
     private val _monthlyGoalProgress = MutableStateFlow(0f)
@@ -213,6 +221,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
                 }
             }
         }
+        // 最近运动记录
+        viewModelScope.launch {
+            repository.observeAllWorkouts().collect { workouts ->
+                _recentWorkouts.value = workouts
+            }
+        }
     }
 
     // ═══════════════════════════════════════════
@@ -221,6 +235,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
 
     fun startTracking(type: String, context: Context) {
         _isTracking.value = true
+        _isTrackingPaused.value = false
         _trackingType.value = type
         _trackingDistance.value = 0f
         _trackingDuration.value = 0L
@@ -239,12 +254,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     }
 
     fun pauseTracking(context: Context) {
+        _isTrackingPaused.value = true
         context.startService(Intent(context, TrackingService::class.java).apply {
             action = TrackingService.ACTION_PAUSE
         })
     }
 
     fun resumeTracking(context: Context) {
+        _isTrackingPaused.value = false
         context.startService(Intent(context, TrackingService::class.java).apply {
             action = TrackingService.ACTION_RESUME
         })
@@ -252,6 +269,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
 
     fun stopTracking(context: Context) {
         _isTracking.value = false
+        _isTrackingPaused.value = false
 
         viewModelScope.launch {
             val record = WorkoutRecord(

@@ -12,6 +12,7 @@ import kotlin.math.roundToInt
  *   骑行 15km/h   = 6.0 MET
  *   健身/力量训练  = 5.0 MET
  *   步行 5km/h    = 3.5 MET
+ *   爬楼梯       = 8.0 MET (高强度)
  */
 object CalorieCalculator {
 
@@ -36,6 +37,7 @@ object CalorieCalculator {
             "cycling" -> 6.0f
             "fitness" -> 5.0f
             "walking" -> 3.5f
+            "stairs" -> 8.0f
             else -> 5.0f
         }
 
