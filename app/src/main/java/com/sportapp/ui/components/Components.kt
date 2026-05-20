@@ -358,11 +358,11 @@ fun RouteMapCard() {
                 Canvas(modifier = Modifier.matchParentSize()) {
                     val path = Path().apply {
                         moveTo(20.dp.toPx(), 105.dp.toPx())
-                        quadraticTo(70.dp.toPx(), 95.dp.toPx(), 100.dp.toPx(), 90.dp.toPx())
-                        quadraticTo(130.dp.toPx(), 86.dp.toPx(), 160.dp.toPx(), 78.dp.toPx())
-                        quadraticTo(190.dp.toPx(), 70.dp.toPx(), 220.dp.toPx(), 72.dp.toPx())
-                        quadraticTo(250.dp.toPx(), 74.dp.toPx(), 270.dp.toPx(), 68.dp.toPx())
-                        quadraticTo(290.dp.toPx(), 62.dp.toPx(), 310.dp.toPx(), 58.dp.toPx())
+                        quadraticBezierTo(70.dp.toPx(), 95.dp.toPx(), 100.dp.toPx(), 90.dp.toPx())
+                        quadraticBezierTo(130.dp.toPx(), 86.dp.toPx(), 160.dp.toPx(), 78.dp.toPx())
+                        quadraticBezierTo(190.dp.toPx(), 70.dp.toPx(), 220.dp.toPx(), 72.dp.toPx())
+                        quadraticBezierTo(250.dp.toPx(), 74.dp.toPx(), 270.dp.toPx(), 68.dp.toPx())
+                        quadraticBezierTo(290.dp.toPx(), 62.dp.toPx(), 310.dp.toPx(), 58.dp.toPx())
                     }
                     drawPath(
                         path,
@@ -675,7 +675,7 @@ fun BadgeItem(badge: AchievementBadge) {
             Text(
                 badge.icon,
                 fontSize = 28.sp,
-                alpha = if (badge.earned) 1f else 0.6f
+                color = Color.Black.copy(alpha = if (badge.earned) 1f else 0.6f)
             )
         }
         Spacer(Modifier.height(4.dp))

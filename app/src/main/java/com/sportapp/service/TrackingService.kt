@@ -134,8 +134,9 @@ class TrackingService : Service() {
     private fun processLocation(location: Location) {
         locations.add(location)
 
-        if (lastLocation != null && location.accuracy < 50f) {  // 过滤低精度点
-            val delta = location.distanceTo(lastLocation)
+        val prevLoc = lastLocation
+        if (prevLoc != null && location.accuracy < 50f) {  // 过滤低精度点
+            val delta = location.distanceTo(prevLoc)
             if (delta > 0 && delta < 200f) {  // 过滤异常跳点
                 totalDistanceMeters += delta
             }
