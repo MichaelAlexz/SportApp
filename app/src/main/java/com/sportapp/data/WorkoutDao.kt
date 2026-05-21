@@ -48,6 +48,8 @@ interface WorkoutDao {
     @Delete
     suspend fun delete(record: WorkoutRecord)
 
+    @Query("SELECT * FROM workout_records WHERE startTimeMs >= :startOfDay AND startTimeMs < :endOfDay ORDER BY startTimeMs DESC")
+    fun getWorkoutsForDay(startOfDay: Long, endOfDay: Long): Flow<List<WorkoutRecord>>
     @Query("DELETE FROM workout_records WHERE id = :id")
     suspend fun deleteById(id: Long)
 }

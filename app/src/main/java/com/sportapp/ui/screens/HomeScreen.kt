@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sportapp.*
@@ -48,15 +49,37 @@ fun HomeScreen(viewModel: HomeViewModel) {
     val trackingPace by viewModel.trackingPace.collectAsState()
     val trackingRoutePoints by viewModel.trackingRoutePoints.collectAsState()
 
-    val monthlyProgress by viewModel.monthlyGoalProgress.collectAsState()
-    val monthlyTarget by viewModel.monthlyGoalTarget.collectAsState()
-    val monthlyValue by viewModel.monthlyGoalValue.collectAsState()
-
     val recentWorkouts by viewModel.recentWorkouts.collectAsState()
 
     var showReminder by remember { mutableStateOf(true) }
     var showWorkoutComplete by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<WorkoutRecord?>(null) }
+
+    // ─── 日历状态 ───
+    var calendarMonth by remember { mutableStateOf(Calendar.getInstance()) }
+    var selectedDayStr by remember { mutableStateOf<String?>(null) }
+
+    // 当前月份字符串
+    val monthStr = remember(calendarMonth) {
+        SimpleDateFormat("yyyy年M月", Locale.CHINA).format(calendarMonth.time)
+    }
+
+    // 有运动记录的天集合 "MM-dd" -> List<WorkoutRecord>
+    val workoutsByDay = remember(recentWorkouts) {
+        val map = mutableMapOf<String, MutableList<WorkoutRecord>>()
+        val sdf = SimpleDateFormat("MM-dd", Locale.CHINA)
+        for (w in recentWorkouts) {
+            val key = sdf.format(Date(w.startTimeMs))
+            map.getOrPut(key) { mutableListOf() }.add(w)
+        }
+        map
+    }
+
+    // 选中天的运动记录
+    val selectedDayWorkouts = remember(selectedDayStr, recentWorkouts) {
+        if (selectedDayStr == null) emptyList()
+        else workoutsByDay[selectedDayStr] ?: emptyList()
+    }
 
     val dashboardItems = remember(todaySteps, todayWorkoutDuration, todayCalories) {
         listOf(
@@ -76,60 +99,36 @@ fun HomeScreen(viewModel: HomeViewModel) {
         WorkoutCategory("爬楼梯", "燃脂有氧", "🪜", "--", "--", listOf(0xFFFFF0EB, 0xFFF5E0D0)),
         WorkoutCategory("健身", "力量训练", "💪", "--", "--", listOf(0xFFFFF0EB, 0xFFFFE0D6))
     )
-
     val typeMap = mapOf(
         "户外跑步" to "running", "走路" to "walking", "骑行" to "cycling",
         "爬楼梯" to "stairs", "健身" to "fitness"
-    )
-
-    val badges = listOf(
-        AchievementBadge("跑者入门", "累计10km", "🏃", todaySteps > 10000),
-        AchievementBadge("燃脂达人", "消耗5000kcal", "🔥", (todayCalories + stepCalories) > 500),
-        AchievementBadge("连续7天", "坚持运动", "⭐", streakDays >= 7),
-        AchievementBadge("月度之星", "月跑100km", "🏆", false),
-        AchievementBadge("全力以赴", "单次10km", "💯", false)
     )
 
     // ─── 删除确认弹窗 ───
     if (deleteTarget != null) {
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            shape = RoundedCornerShape(20.dp),
-            containerColor = Surface,
+            shape = RoundedCornerShape(20.dp), containerColor = Surface,
             title = { Text("确认删除", fontWeight = FontWeight.W700) },
             text = { Text("确定要删除这条运动记录吗？\n删除后无法恢复。") },
             confirmButton = {
-                Button(
-                    onClick = {
-                        deleteTarget?.let { viewModel.deleteWorkout(it) }
-                        deleteTarget = null
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)
-                ) { Text("删除", color = Color.White) }
+                Button(onClick = { deleteTarget?.let { viewModel.deleteWorkout(it) }; deleteTarget = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)) { Text("删除", color = Color.White) }
             },
-            dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) { Text("取消", color = TextSecondary) }
-            }
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("取消", color = TextSecondary) } }
         )
     }
 
     if (showReminder) {
-        ReminderDialog(
-            onDismiss = { showReminder = false },
-            onStart = { showReminder = false; viewModel.startTracking("running", context) }
-        )
+        ReminderDialog(onDismiss = { showReminder = false },
+            onStart = { showReminder = false; viewModel.startTracking("running", context) })
     }
     if (showWorkoutComplete) {
-        WorkoutCompleteDialog(
-            distanceKm = trackingDistance / 1000f, durationMin = (trackingDuration / 60).toInt(),
-            calories = trackingCalories, onDismiss = { showWorkoutComplete = false }
-        )
+        WorkoutCompleteDialog(distanceKm = trackingDistance / 1000f, durationMin = (trackingDuration / 60).toInt(),
+            calories = trackingCalories, onDismiss = { showWorkoutComplete = false })
     }
 
-    Scaffold(
-        containerColor = Background,
-        bottomBar = { SimpleBottomBar() }
-    ) { paddingValues ->
+    Scaffold(containerColor = Background, bottomBar = { SimpleBottomBar() }) { paddingValues ->
         Column(modifier = Modifier.fillMaxSize().padding(paddingValues).verticalScroll(rememberScrollState())) {
             Spacer(Modifier.height(8.dp))
             SimpleHeader()
@@ -146,18 +145,11 @@ fun HomeScreen(viewModel: HomeViewModel) {
             if (isTracking) {
                 TrackingPanel(
                     type = trackingType, distance = trackingDistance, duration = trackingDuration,
-                    calories = trackingCalories, pace = trackingPace,
-                    isPaused = isTrackingPaused,
-                    onTogglePause = {
-                        if (isTrackingPaused) viewModel.resumeTracking(context)
-                        else viewModel.pauseTracking(context)
-                    },
+                    calories = trackingCalories, pace = trackingPace, isPaused = isTrackingPaused,
+                    onTogglePause = { if (isTrackingPaused) viewModel.resumeTracking(context) else viewModel.pauseTracking(context) },
                     onStop = { viewModel.stopTracking(context); showWorkoutComplete = true },
-                    formatDistance = { viewModel.formatDistance(it) },
-                    formatDuration = { viewModel.formatDuration(it) },
-                    formatCalories = { viewModel.formatCalories(it) },
-                    formatPace = { viewModel.formatPace(it) }
-                )
+                    formatDistance = { viewModel.formatDistance(it) }, formatDuration = { viewModel.formatDuration(it) },
+                    formatCalories = { viewModel.formatCalories(it) }, formatPace = { viewModel.formatPace(it) })
             } else {
                 SectionTitle("开始运动")
                 LazyRow(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 20.dp),
@@ -168,21 +160,42 @@ fun HomeScreen(viewModel: HomeViewModel) {
                 }
             }
 
-            // ─── 真实GPS轨迹地图 ───
+            // ─── GPS轨迹地图 ───
             SectionTitle("运动轨迹", if (trackingRoutePoints.isNotEmpty()) "实时" else if (todayWorkoutDuration > 0) "今日运动 ${viewModel.formatDuration(todayWorkoutDuration)}" else "暂无记录")
             RouteMapCardReal(routePoints = trackingRoutePoints)
 
-            SectionTitle("🎯 本月目标")
-            GoalCardRealTime(progress = monthlyProgress, current = monthlyValue, target = monthlyTarget)
+            // ─── 运动日历 ───
+            SectionTitle("📅 运动日历", "本月有 ${workoutsByDay.size} 天运动")
+            WorkoutCalendarCard(
+                calendarMonth = calendarMonth,
+                workoutsByDay = workoutsByDay,
+                selectedDayStr = selectedDayStr,
+                onDayClick = { dayKey -> selectedDayStr = if (selectedDayStr == dayKey) null else dayKey },
+                onPrevMonth = {
+                    val c = calendarMonth.clone() as Calendar
+                    c.add(Calendar.MONTH, -1); calendarMonth = c
+                    selectedDayStr = null
+                },
+                onNextMonth = {
+                    val c = calendarMonth.clone() as Calendar
+                    c.add(Calendar.MONTH, 1); calendarMonth = c
+                    selectedDayStr = null
+                }
+            )
 
-            SectionTitle("🏅 成就徽章", "已获得 ${badges.count { it.earned }}/${badges.size}")
-            LazyRow(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                items(badges) { BadgeItem(it) }
+            // 选中天的运动记录
+            if (selectedDayStr != null && selectedDayWorkouts.isNotEmpty()) {
+                val sdf = SimpleDateFormat("MM月dd日", Locale.CHINA)
+                val dayLabel = try { sdf.format(Date(sdf.parse(selectedDayStr!!)!!.time)) } catch (_: Exception) { selectedDayStr }
+                SectionTitle("📋 $dayLabel 运动记录")
+                selectedDayWorkouts.forEach { record ->
+                    WorkoutHistoryItem(record, viewModel, onDelete = { deleteTarget = record })
+                    Spacer(Modifier.height(6.dp))
+                }
             }
 
-            // ─── 运动历史记录（含删除功能） ───
-            SectionTitle("📋 运动记录", "共 ${recentWorkouts.size} 条")
+            // ─── 全部运动记录 ───
+            SectionTitle("📋 全部运动记录", "共 ${recentWorkouts.size} 条")
             if (recentWorkouts.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
                     Text("还没有运动记录，开始第一次运动吧 🏃", color = TextSecondary, fontSize = 14.sp)
@@ -198,7 +211,119 @@ fun HomeScreen(viewModel: HomeViewModel) {
     }
 }
 
-// ─── 简单头部（无头像） ───
+// ═══════════════════════════════════════════
+//  运动日历卡片
+// ═══════════════════════════════════════════
+@Composable
+fun WorkoutCalendarCard(
+    calendarMonth: Calendar,
+    workoutsByDay: Map<String, List<WorkoutRecord>>,
+    selectedDayStr: String?,
+    onDayClick: (String) -> Unit,
+    onPrevMonth: () -> Unit,
+    onNextMonth: () -> Unit
+) {
+    // 计算当前月信息
+    val year = calendarMonth.get(Calendar.YEAR)
+    val month = calendarMonth.get(Calendar.MONTH)
+    val firstDayOfMonth = Calendar.getInstance().apply { set(year, month, 1) }
+    val daysInMonth = calendarMonth.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val startWeekday = (firstDayOfMonth.get(Calendar.DAY_OF_WEEK) - Calendar.SUNDAY + 7) % 7
+
+    // 今天
+    val today = Calendar.getInstance()
+    val todayStr = SimpleDateFormat("MM-dd", Locale.CHINA).format(today.time)
+
+    val monthLabel = remember(calendarMonth) {
+        SimpleDateFormat("yyyy年M月", Locale.CHINA).format(calendarMonth.time)
+    }
+    val sdfDay = SimpleDateFormat("MM-dd", Locale.CHINA)
+
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Surface), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // 月份切换栏
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onPrevMonth) { Text("‹", fontSize = 22.sp, color = Primary) }
+                Text(monthLabel, fontWeight = FontWeight.W700, fontSize = 16.sp, color = OnBackground)
+                TextButton(onClick = onNextMonth) { Text("›", fontSize = 22.sp, color = Primary) }
+            }
+            Spacer(Modifier.height(8.dp))
+
+            // 星期标头
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                listOf("日", "一", "二", "三", "四", "五", "六").forEach { text ->
+                    Text(text, color = TextTertiary, fontSize = 11.sp, fontWeight = FontWeight.W500,
+                        modifier = Modifier.width(36.dp), textAlign = TextAlign.Center)
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+
+            // 日期网格
+            val totalCells = startWeekday + daysInMonth
+            val rows = (totalCells + 6) / 7
+
+            for (row in 0 until rows) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    for (col in 0..6) {
+                        val cellIndex = row * 7 + col
+                        val dayNumber = cellIndex - startWeekday + 1
+
+                        if (dayNumber in 1..daysInMonth) {
+                            val dayCal = Calendar.getInstance().apply { set(year, month, dayNumber, 0, 0, 0) }
+                            val dayKey = sdfDay.format(dayCal.time)
+                            val hasWorkout = workoutsByDay.containsKey(dayKey)
+                            val isSelected = dayKey == selectedDayStr
+                            val isToday = dayKey == todayStr
+
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        when {
+                                            isSelected -> Primary
+                                            isToday -> PrimaryLight
+                                            else -> Color.Transparent
+                                        }
+                                    )
+                                    .clickable(enabled = hasWorkout) { onDayClick(dayKey) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        "$dayNumber",
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isToday || isSelected) FontWeight.W700 else FontWeight.W500,
+                                        color = when {
+                                            isSelected -> Color.White
+                                            isToday -> Primary
+                                            hasWorkout -> OnBackground
+                                            else -> TextTertiary
+                                        }
+                                    )
+                                    if (hasWorkout) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(4.dp)
+                                                .clip(CircleShape)
+                                                .background(if (isSelected) Color.White else Color(0xFF4CAF50))
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            Spacer(Modifier.size(36.dp))
+                        }
+                    }
+                }
+                Spacer(Modifier.height(2.dp))
+            }
+        }
+    }
+}
+
+// ─── 简单头部 ───
 @Composable
 fun SimpleHeader() {
     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
@@ -209,89 +334,56 @@ fun SimpleHeader() {
     }
 }
 
-// ─── 真实GPS轨迹地图 ───
+// ─── GPS轨迹地图 ───
 @Composable
 fun RouteMapCardReal(routePoints: String) {
     val points = remember(routePoints) {
         if (routePoints.isBlank()) emptyList()
         else routePoints.split("|").mapNotNull { segment ->
             val parts = segment.split(",")
-            if (parts.size == 2) {
-                val lat = parts[0].toFloatOrNull()
-                val lng = parts[1].toFloatOrNull()
-                if (lat != null && lng != null) Pair(lat, lng) else null
-            } else null
+            if (parts.size == 2) { val lat = parts[0].toFloatOrNull(); val lng = parts[1].toFloatOrNull(); if (lat != null && lng != null) Pair(lat, lng) else null } else null
         }
     }
-
     Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = Surface), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(if (points.isNotEmpty()) "📍 实时轨迹" else "🌍 运动路线", fontWeight = FontWeight.W700, fontSize = 15.sp)
                 Text("${points.size} 个定位点", color = TextSecondary, fontSize = 12.sp)
             }
             Spacer(Modifier.height(12.dp))
-
             Box(modifier = Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(14.dp))
                 .background(Brush.verticalGradient(listOf(Color(0xFFE8F6F3), Color(0xFFD0E8E4))))) {
-
                 if (points.size >= 2) {
-                    // 绘制真实GPS轨迹路径
                     Canvas(modifier = Modifier.matchParentSize().padding(12.dp)) {
-                        val padding = 12.dp.toPx()
-                        val w = size.width - padding * 2
-                        val h = size.height - padding * 2
-
-                        // 计算实际坐标范围（归一化反向映射到画布）
+                        val pad = 12.dp.toPx(); val w = size.width - pad * 2; val h = size.height - pad * 2
                         val minLat = points.minOf { it.first }; val maxLat = points.maxOf { it.first }
                         val minLng = points.minOf { it.second }; val maxLng = points.maxOf { it.second }
-                        val latRange = (maxLat - minLat).coerceAtLeast(0.001f)
-                        val lngRange = (maxLng - minLng).coerceAtLeast(0.001f)
-
-                        // 映射到画布坐标（x=lng, y=lat, y翻转）
-                        fun mapX(lng: Float) = padding + ((lng - minLng) / lngRange) * w
-                        fun mapY(lat: Float) = padding + ((maxLat - lat) / latRange) * h
-
-                        // 绘制路径线
-                        val path = Path()
-                        path.moveTo(mapX(points[0].second), mapY(points[0].first))
-                        for (i in 1 until points.size) {
-                            path.lineTo(mapX(points[i].second), mapY(points[i].first))
-                        }
-                        drawPath(path, color = Primary, style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-
-                        // 绘制起点圆点（绿色）
-                        drawCircle(Color(0xFF4CAF50), radius = 6.dp.toPx(), center = Offset(mapX(points[0].second), mapY(points[0].first)))
-                        // 绘制终点圆点（红色）
-                        drawCircle(ErrorRed, radius = 6.dp.toPx(), center = Offset(mapX(points.last().second), mapY(points.last().first)))
+                        val latR = (maxLat - minLat).coerceAtLeast(0.001f); val lngR = (maxLng - minLng).coerceAtLeast(0.001f)
+                        fun mx(lng: Float) = pad + ((lng - minLng) / lngR) * w
+                        fun my(lat: Float) = pad + ((maxLat - lat) / latR) * h
+                        val path = Path().apply { moveTo(mx(points[0].second), my(points[0].first)); for (i in 1 until points.size) lineTo(mx(points[i].second), my(points[i].first)) }
+                        drawPath(path, Primary, style = Stroke(3.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                        drawCircle(Color(0xFF4CAF50), 6.dp.toPx(), Offset(mx(points[0].second), my(points[0].first)))
+                        drawCircle(ErrorRed, 6.dp.toPx(), Offset(mx(points.last().second), my(points.last().first)))
                     }
-
-                    // 起点/终点标签
                     Box(modifier = Modifier.fillMaxSize().padding(12.dp)) {
-                        Text("🟢 起点", color = Color.Black.copy(alpha = 0.4f), fontSize = 9.sp, modifier = Modifier.align(Alignment.BottomStart))
-                        Text("🔴 终点", color = Color.Black.copy(alpha = 0.4f), fontSize = 9.sp, modifier = Modifier.align(Alignment.TopEnd))
+                        Text("🟢 起点", color = Color.Black.copy(0.4f), fontSize = 9.sp, modifier = Modifier.align(Alignment.BottomStart))
+                        Text("🔴 终点", color = Color.Black.copy(0.4f), fontSize = 9.sp, modifier = Modifier.align(Alignment.TopEnd))
                     }
                 } else {
-                    // 无轨迹点：显示占位地图
                     Canvas(modifier = Modifier.matchParentSize().padding(12.dp)) {
-                        val path = Path().apply {
-                            moveTo(20.dp.toPx(), 120.dp.toPx())
-                            quadraticBezierTo(60.dp.toPx(), 110.dp.toPx(), 100.dp.toPx(), 105.dp.toPx())
-                            quadraticBezierTo(140.dp.toPx(), 100.dp.toPx(), 180.dp.toPx(), 95.dp.toPx())
-                            quadraticBezierTo(220.dp.toPx(), 90.dp.toPx(), 260.dp.toPx(), 88.dp.toPx())
-                            quadraticBezierTo(290.dp.toPx(), 86.dp.toPx(), 310.dp.toPx(), 82.dp.toPx())
-                        }
-                        drawPath(path, color = Primary.copy(alpha = 0.4f), style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+                        val p = Path().apply { moveTo(20.dp.toPx(), 120.dp.toPx()); quadraticBezierTo(60.dp.toPx(), 110.dp.toPx(), 100.dp.toPx(), 105.dp.toPx()); quadraticBezierTo(140.dp.toPx(), 100.dp.toPx(), 180.dp.toPx(), 95.dp.toPx()); quadraticBezierTo(220.dp.toPx(), 90.dp.toPx(), 260.dp.toPx(), 88.dp.toPx()); quadraticBezierTo(290.dp.toPx(), 86.dp.toPx(), 310.dp.toPx(), 82.dp.toPx()) }
+                        drawPath(p, Primary.copy(0.4f), style = Stroke(2.dp.toPx(), cap = StrokeCap.Round))
                         drawCircle(Primary, 4.dp.toPx(), Offset(20.dp.toPx(), 120.dp.toPx()))
                         drawCircle(ErrorRed, 4.dp.toPx(), Offset(310.dp.toPx(), 82.dp.toPx()))
                     }
                     Box(modifier = Modifier.fillMaxSize().padding(12.dp)) {
-                        Text("⛳ 起点", color = Color.Black.copy(alpha = 0.3f), fontSize = 9.sp, modifier = Modifier.align(Alignment.BottomStart))
-                        Text("🏁 终点", color = Color.Black.copy(alpha = 0.3f), fontSize = 9.sp, modifier = Modifier.align(Alignment.TopEnd))
+                        Text("⛳ 起点", color = Color.Black.copy(0.3f), fontSize = 9.sp, modifier = Modifier.align(Alignment.BottomStart))
+                        Text("🏁 终点", color = Color.Black.copy(0.3f), fontSize = 9.sp, modifier = Modifier.align(Alignment.TopEnd))
                     }
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("开始运动后显示GPS轨迹", color = TextSecondary.copy(alpha = 0.6f), fontSize = 12.sp)
+                        Text("开始运动后显示GPS轨迹", color = TextSecondary.copy(0.6f), fontSize = 12.sp)
                     }
                 }
             }
@@ -299,20 +391,17 @@ fun RouteMapCardReal(routePoints: String) {
     }
 }
 
-// ─── 运动历史记录卡片（含删除按钮） ───
+// ─── 运动历史记录卡片 ───
 @Composable
 fun WorkoutHistoryItem(record: WorkoutRecord, viewModel: HomeViewModel, onDelete: () -> Unit) {
     val typeEmoji = when (record.type) { "running" -> "🏃"; "walking" -> "🚶"; "cycling" -> "🚴"; "stairs" -> "🪜"; "fitness" -> "💪"; else -> "🏃" }
     val typeName = when (record.type) { "running" -> "户外跑步"; "walking" -> "走路"; "cycling" -> "骑行"; "stairs" -> "爬楼梯"; "fitness" -> "健身"; else -> record.type }
     val dateStr = remember(record.startTimeMs) { SimpleDateFormat("MM/dd HH:mm", Locale.CHINA).format(Date(record.startTimeMs)) }
     val hasRoute = record.routePoints.isNotBlank()
-
     Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Surface), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(PrimaryLight), contentAlignment = Alignment.Center) {
-                Text(typeEmoji, fontSize = 20.sp)
-            }
+            Box(modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(PrimaryLight), contentAlignment = Alignment.Center) { Text(typeEmoji, fontSize = 20.sp) }
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -323,22 +412,16 @@ fun WorkoutHistoryItem(record: WorkoutRecord, viewModel: HomeViewModel, onDelete
             }
             if (record.distanceMeters > 0) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(50.dp)) {
-                    Text(viewModel.formatDistance(record.distanceMeters), fontWeight = FontWeight.W800, fontSize = 12.sp, color = Primary)
-                    Text("距离", color = TextTertiary, fontSize = 8.sp)
+                    Text(viewModel.formatDistance(record.distanceMeters), fontWeight = FontWeight.W800, fontSize = 12.sp, color = Primary); Text("距离", color = TextTertiary, fontSize = 8.sp)
                 }
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(40.dp)) {
-                Text("${record.durationSeconds / 60}", fontWeight = FontWeight.W800, fontSize = 12.sp, color = OnBackground)
-                Text("分钟", color = TextTertiary, fontSize = 8.sp)
+                Text("${record.durationSeconds / 60}", fontWeight = FontWeight.W800, fontSize = 12.sp, color = OnBackground); Text("分钟", color = TextTertiary, fontSize = 8.sp)
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(50.dp)) {
-                Text("${record.caloriesBurned.toInt()}", fontWeight = FontWeight.W800, fontSize = 12.sp, color = OrangeAccent)
-                Text("千卡", color = TextTertiary, fontSize = 8.sp)
+                Text("${record.caloriesBurned.toInt()}", fontWeight = FontWeight.W800, fontSize = 12.sp, color = OrangeAccent); Text("千卡", color = TextTertiary, fontSize = 8.sp)
             }
-            // 删除按钮
-            Box(modifier = Modifier.size(32.dp).clip(CircleShape).clickable { onDelete() }, contentAlignment = Alignment.Center) {
-                Text("🗑️", fontSize = 14.sp)
-            }
+            Box(modifier = Modifier.size(32.dp).clip(CircleShape).clickable { onDelete() }, contentAlignment = Alignment.Center) { Text("🗑️", fontSize = 14.sp) }
         }
     }
 }
@@ -346,25 +429,19 @@ fun WorkoutHistoryItem(record: WorkoutRecord, viewModel: HomeViewModel, onDelete
 // ─── CHECK-IN ───
 @Composable
 fun CheckInCardRealTime(steps: Int, distance: Float, activeMinutes: Float, calories: Float) {
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
-        Box(modifier = Modifier.fillMaxWidth()
-            .background(Brush.horizontalGradient(listOf(Primary, PrimaryDark)), RoundedCornerShape(20.dp)).padding(20.dp)) {
+    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
+        Box(modifier = Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(Primary, PrimaryDark)), RoundedCornerShape(20.dp)).padding(20.dp)) {
             Column {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("今日步数", color = Color.White.copy(alpha = 0.85f), fontSize = 14.sp)
-                    Text("实时更新", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                    Text("今日步数", color = Color.White.copy(0.85f), fontSize = 14.sp); Text("实时更新", color = Color.White.copy(0.7f), fontSize = 12.sp)
                 }
-                Row(modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(formatNumber(steps), fontSize = 36.sp, fontWeight = FontWeight.W900, color = Color.White)
-                        Text(" / 10,000", fontSize = 16.sp, color = Color.White.copy(alpha = 0.8f))
+                        Text(" / 10,000", fontSize = 16.sp, color = Color.White.copy(0.8f))
                     }
-                    Surface(shape = RoundedCornerShape(25.dp), color = Color.White.copy(alpha = 0.22f),
-                        border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.4f))) {
-                        Text(if (steps >= 10000) "🎉 目标达成" else "✓ 已打卡",
-                            color = Color.White, fontWeight = FontWeight.W600,
+                    Surface(shape = RoundedCornerShape(25.dp), color = Color.White.copy(0.22f), border = BorderStroke(1.5.dp, Color.White.copy(0.4f))) {
+                        Text(if (steps >= 10000) "🎉 目标达成" else "✓ 已打卡", color = Color.White, fontWeight = FontWeight.W600,
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp), fontSize = 13.sp)
                     }
                 }
@@ -378,93 +455,40 @@ fun CheckInCardRealTime(steps: Int, distance: Float, activeMinutes: Float, calor
     }
 }
 @Composable private fun CStat(label: String, value: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
-        Text(" $value", color = Color.White, fontWeight = FontWeight.W700, fontSize = 14.sp)
-    }
+    Row(verticalAlignment = Alignment.CenterVertically) { Text(label, color = Color.White.copy(0.85f), fontSize = 12.sp); Text(" $value", color = Color.White, fontWeight = FontWeight.W700, fontSize = 14.sp) }
 }
 
 // ─── TRACKING PANEL ───
 @Composable
-fun TrackingPanel(
-    type: String, distance: Float, duration: Long, calories: Float, pace: Int,
-    isPaused: Boolean, onTogglePause: () -> Unit, onStop: () -> Unit,
-    formatDistance: (Float) -> String, formatDuration: (Long) -> String,
-    formatCalories: (Float) -> String, formatPace: (Int) -> String
-) {
-    val typeEmoji = when (type) { "running" -> "🏃"; "walking" -> "🚶"; "cycling" -> "🚴"; "stairs" -> "🪜"; else -> "💪" }
+fun TrackingPanel(type: String, distance: Float, duration: Long, calories: Float, pace: Int,
+                  isPaused: Boolean, onTogglePause: () -> Unit, onStop: () -> Unit,
+                  formatDistance: (Float) -> String, formatDuration: (Long) -> String,
+                  formatCalories: (Float) -> String, formatPace: (Int) -> String) {
+    val emoji = when (type) { "running" -> "🏃"; "walking" -> "🚶"; "cycling" -> "🚴"; "stairs" -> "🪜"; else -> "💪" }
     Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Surface), elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)) {
         Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("$typeEmoji ${if (isPaused) "已暂停" else "运动中"}", fontWeight = FontWeight.W700, fontSize = 16.sp,
+                Text("$emoji ${if (isPaused) "已暂停" else "运动中"}", fontWeight = FontWeight.W700, fontSize = 16.sp,
                     color = if (isPaused) OrangeAccent else Primary)
-                Spacer(Modifier.width(8.dp))
-                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(if (isPaused) OrangeAccent else ErrorRed))
+                Spacer(Modifier.width(8.dp)); Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(if (isPaused) OrangeAccent else ErrorRed))
             }
             Spacer(Modifier.height(20.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(formatDistance(distance), fontWeight = FontWeight.W900, fontSize = 28.sp, color = OnBackground); Text("距离", color = TextSecondary, fontSize = 12.sp)
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(formatDuration(duration), fontWeight = FontWeight.W900, fontSize = 28.sp, color = OnBackground); Text("时长", color = TextSecondary, fontSize = 12.sp)
-                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(formatDistance(distance), fontWeight = FontWeight.W900, fontSize = 28.sp, color = OnBackground); Text("距离", color = TextSecondary, fontSize = 12.sp) }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(formatDuration(duration), fontWeight = FontWeight.W900, fontSize = 28.sp, color = OnBackground); Text("时长", color = TextSecondary, fontSize = 12.sp) }
             }
             Spacer(Modifier.height(16.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(formatCalories(calories), fontWeight = FontWeight.W700, fontSize = 18.sp, color = OnBackground); Text("千卡", color = TextSecondary, fontSize = 11.sp)
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(formatPace(pace), fontWeight = FontWeight.W700, fontSize = 18.sp, color = OnBackground); Text("配速", color = TextSecondary, fontSize = 11.sp)
-                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(formatCalories(calories), fontWeight = FontWeight.W700, fontSize = 18.sp, color = OnBackground); Text("千卡", color = TextSecondary, fontSize = 11.sp) }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(formatPace(pace), fontWeight = FontWeight.W700, fontSize = 18.sp, color = OnBackground); Text("配速", color = TextSecondary, fontSize = 11.sp) }
             }
             Spacer(Modifier.height(20.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                OutlinedButton(onClick = onTogglePause, modifier = Modifier.weight(1f).height(48.dp),
-                    shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary)) {
-                    Text(if (isPaused) "继续 ▶" else "暂停 ⏸", fontWeight = FontWeight.W700)
-                }
-                Button(onClick = onStop, modifier = Modifier.weight(1f).height(48.dp),
-                    shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)) {
-                    Text("结束", fontWeight = FontWeight.W700, color = Color.White)
-                }
-            }
-        }
-    }
-}
-
-// ─── GOAL CARD ───
-@Composable
-fun GoalCardRealTime(progress: Float, current: Float, target: Float) {
-    val pct = (progress * 100).toInt(); val sweepAngle = (progress * 360f).coerceAtMost(360f)
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Surface), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
-        Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(80.dp), contentAlignment = Alignment.Center) {
-                Canvas(modifier = Modifier.size(80.dp)) {
-                    val sw = 7.dp.toPx(); val r = (size.minDimension - sw) / 2
-                    val tl = Offset((size.width - r * 2) / 2, (size.height - r * 2) / 2)
-                    val ar = androidx.compose.ui.geometry.Size(r * 2, r * 2)
-                    drawArc(Divider, -90f, 360f, false, tl, ar, style = Stroke(sw, cap = StrokeCap.Round))
-                    drawArc(Brush.horizontalGradient(listOf(Primary, Primary.copy(0.7f))), -90f, sweepAngle, false, tl, ar, style = Stroke(sw, cap = StrokeCap.Round))
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("$pct%", fontWeight = FontWeight.W900, fontSize = 18.sp, color = Primary); Text("完成", color = TextSecondary, fontSize = 8.sp) }
-            }
-            Spacer(Modifier.width(20.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text("本月跑步目标 ${target.toInt()}km", fontWeight = FontWeight.W700, fontSize = 15.sp, color = OnBackground)
-                Text("已完成 ${String.format("%.1f", current)}km，还差 ${String.format("%.1f", (target - current).coerceAtLeast(0f))}km", color = TextSecondary, fontSize = 12.sp)
-                Spacer(Modifier.height(10.dp))
-                Box(modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(6.dp)).background(Divider)) {
-                    Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(progress.coerceAtMost(1f)).clip(RoundedCornerShape(6.dp)).background(Brush.horizontalGradient(listOf(Primary, Primary.copy(0.7f)))))
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("0km", color = TextTertiary, fontSize = 10.sp)
-                    Text("${String.format("%.1f", current)}km", color = Primary, fontWeight = FontWeight.W600, fontSize = 10.sp)
-                    Text("${target.toInt()}km", color = TextTertiary, fontSize = 10.sp)
-                }
+                OutlinedButton(onClick = onTogglePause, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Primary)) { Text(if (isPaused) "继续 ▶" else "暂停 ⏸", fontWeight = FontWeight.W700) }
+                Button(onClick = onStop, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)) { Text("结束", fontWeight = FontWeight.W700, color = Color.White) }
             }
         }
     }
@@ -480,15 +504,9 @@ fun WorkoutCompleteDialog(distanceKm: Float, durationMin: Int, calories: Float, 
                 Spacer(Modifier.height(12.dp)); Text("运动完成！", fontWeight = FontWeight.W800, fontSize = 20.sp, color = OnBackground)
                 Spacer(Modifier.height(16.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(String.format("%.1f", distanceKm), fontWeight = FontWeight.W900, fontSize = 20.sp, color = OnBackground); Text("公里", color = TextSecondary, fontSize = 11.sp)
-                    }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("$durationMin", fontWeight = FontWeight.W900, fontSize = 20.sp, color = OnBackground); Text("分钟", color = TextSecondary, fontSize = 11.sp)
-                    }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("${calories.toInt()}", fontWeight = FontWeight.W900, fontSize = 20.sp, color = OnBackground); Text("千卡", color = TextSecondary, fontSize = 11.sp)
-                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(String.format("%.1f", distanceKm), fontWeight = FontWeight.W900, fontSize = 20.sp, color = OnBackground); Text("公里", color = TextSecondary, fontSize = 11.sp) }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("$durationMin", fontWeight = FontWeight.W900, fontSize = 20.sp, color = OnBackground); Text("分钟", color = TextSecondary, fontSize = 11.sp) }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("${calories.toInt()}", fontWeight = FontWeight.W900, fontSize = 20.sp, color = OnBackground); Text("千卡", color = TextSecondary, fontSize = 11.sp) }
                 }
                 Spacer(Modifier.height(24.dp))
                 Button(onClick = onDismiss, shape = RoundedCornerShape(25.dp), colors = ButtonDefaults.buttonColors(containerColor = Primary),
@@ -501,7 +519,7 @@ fun WorkoutCompleteDialog(distanceKm: Float, durationMin: Int, calories: Float, 
 @Composable
 fun SimpleBottomBar() {
     Surface(modifier = Modifier.fillMaxWidth().height(70.dp), shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        color = Surface.copy(alpha = 0.92f), shadowElevation = 8.dp) {
+        color = Surface.copy(0.92f), shadowElevation = 8.dp) {
         Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             Text("🏃 轻动 · 你的私人运动记录", color = TextSecondary, fontSize = 12.sp)
         }
