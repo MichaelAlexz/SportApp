@@ -81,6 +81,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
     private val _trackingPace = MutableStateFlow(0)
     val trackingPace: StateFlow<Int> = _trackingPace.asStateFlow()
 
+    // 实时轨迹点字符串
+    private val _trackingRoutePoints = MutableStateFlow("")
+    val trackingRoutePoints: StateFlow<String> = _trackingRoutePoints.asStateFlow()
+
     // 暂停状态（true=已暂停, false=运动中）
     private val _isTrackingPaused = MutableStateFlow(false)
     val isTrackingPaused: StateFlow<Boolean> = _isTrackingPaused.asStateFlow()
@@ -271,6 +275,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
         _isTracking.value = false
         _isTrackingPaused.value = false
 
+        val savedRoute = _trackingRoutePoints.value
+
         viewModelScope.launch {
             val record = WorkoutRecord(
                 type = _trackingType.value,
@@ -280,7 +286,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
                 distanceMeters = _trackingDistance.value,
                 caloriesBurned = _trackingCalories.value,
                 avgPaceSeconds = _trackingPace.value,
-                routePoints = ""  // GPS轨迹点暂不序列化
+                routePoints = savedRoute
             )
             repository.saveWorkout(record)
             repository.updateMonthlyGoal(_trackingDistance.value)
@@ -289,6 +295,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
         context.startService(Intent(context, TrackingService::class.java).apply {
             action = TrackingService.ACTION_STOP
         })
+    }
+
+    // ═══════════════════════════════════════════
+    //  删除运动记录
+    // ═══════════════════════════════════════════
+
+    fun deleteWorkout(record: WorkoutRecord) {
+        viewModelScope.launch {
+            repository.deleteWorkout(record)
+        }
     }
 
     // ═══════════════════════════════════════════
@@ -301,6 +317,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application), S
             _trackingDuration.value = intent.getLongExtra(TrackingService.EXTRA_DURATION, 0)
             _trackingCalories.value = intent.getFloatExtra(TrackingService.EXTRA_CALORIES, 0f)
             _trackingPace.value = intent.getIntExtra(TrackingService.EXTRA_PACE, 0)
+            _trackingRoutePoints.value = intent.getStringExtra(TrackingService.EXTRA_ROUTE) ?: ""
         }
     }
 

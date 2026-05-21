@@ -152,4 +152,9 @@ class SportRepository(private val db: AppDatabase) {
     suspend fun updateMonthlyGoal(distanceMeters: Float) {
         goalDao.addProgress("monthly_run", distanceMeters / 1000f)
     }
+
+    /** 删除运动记录 */
+    suspend fun deleteWorkout(record: WorkoutRecord) {
+        workoutDao.delete(record)
+    }
 }

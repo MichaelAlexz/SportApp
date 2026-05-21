@@ -31,6 +31,9 @@ class TrackingService : Service(), LocationListener {
     private var lastLocation: Location? = null
     private var timerJob: Job? = null
     private var elapsedSeconds = 0L
+    // 实时轨迹点（归一化坐标，用于UI绘制）
+    private val routePoints = mutableListOf<Pair<Float, Float>>()
+    private var routeBounds = floatArrayOf(Float.MAX_VALUE, Float.MAX_VALUE, Float.MIN_VALUE, Float.MIN_VALUE) // minLat, minLng, maxLat, maxLng
 
     companion object {
         const val TAG = "TrackingService"
@@ -48,6 +51,7 @@ class TrackingService : Service(), LocationListener {
         const val EXTRA_DURATION = "extra_duration"
         const val EXTRA_CALORIES = "extra_calories"
         const val EXTRA_PACE = "extra_pace"
+        const val EXTRA_ROUTE = "extra_route"
     }
 
     override fun onCreate() {
@@ -154,6 +158,18 @@ class TrackingService : Service(), LocationListener {
             }
         }
         lastLocation = location
+
+        // 记录轨迹点（归一化到0-1范围）
+        val lat = location.latitude.toFloat()
+        val lng = location.longitude.toFloat()
+        if (lat < routeBounds[0]) routeBounds[0] = lat
+        if (lng < routeBounds[1]) routeBounds[1] = lng
+        if (lat > routeBounds[2]) routeBounds[2] = lat
+        if (lng > routeBounds[3]) routeBounds[3] = lng
+        // 归一化坐标加入列表
+        val normLat = (lat - routeBounds[0]) / (routeBounds[2] - routeBounds[0] + 0.0001f)
+        val normLng = (lng - routeBounds[1]) / (routeBounds[3] - routeBounds[1] + 0.0001f)
+        routePoints.add(Pair(normLat, normLng))
     }
 
     override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
@@ -166,13 +182,16 @@ class TrackingService : Service(), LocationListener {
         } else 0
         val calories = CalorieCalculator.calculate(workoutType, elapsedSeconds)
 
+        // 序列化轨迹点：lat1,lng1|lat2,lng2|...
+        val routeStr = routePoints.joinToString("|") { "${it.first},${it.second}" }
+
         val intent = Intent(BROADCAST_LOCATION).apply {
             putExtra(EXTRA_DISTANCE, totalDistanceMeters)
             putExtra(EXTRA_DURATION, elapsedSeconds)
             putExtra(EXTRA_CALORIES, calories)
             putExtra(EXTRA_PACE, avgPace)
+            putExtra(EXTRA_ROUTE, routeStr)
         }
-        // 使用全局广播（LocalBroadcastManager 已弃用）
         sendBroadcast(intent)
     }
 
